@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Учебный тренажёр{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <nav class="nav">
+      <div class="container nav-inner">
+        <a href="{{ url_for('categories') }}" class="brand">Python Tasks</a>
+        <div class="spacer"></div>
+        <form class="search" method="get" action="{{ url_for('search') }}">
+          <input type="text" name="q" placeholder="Поиск задач..." value="{{ request.args.get('q','') }}" />
+        </form>
+        {% if session.get('user_id') %}
+          <a class="btn secondary" href="{{ url_for('categories') }}">Задачи</a>
+          <a class="btn secondary" href="{{ url_for('leaderboard') }}">Лидерборд</a>
+          <a class="btn secondary" href="{{ url_for('submissions') }}">Отправки</a>
+          <a class="btn secondary" href="{{ url_for('profile') }}">Профиль ({{ session.get('username') }})</a>
+          <a class="btn" href="{{ url_for('logout') }}">Выход</a>
+        {% else %}
+          <a class="btn" href="{{ url_for('login') }}">Вход</a>
+          <a class="btn secondary" href="{{ url_for('register') }}">Регистрация</a>
+        {% endif %}
+      </div>
+    </nav>
+
+    <main class="container">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <ul class="flash">
+            {% for category, message in messages %}
+              <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endwith %}
+
+      <div class="layout-adaptive">
+        <div class="content-wrapper">
+          <section class="content">
+            {% block content %}{% endblock %}
+          </section>
+        </div>
+
+        {% if session.get('user_id') and request.endpoint in ['categories','task_detail','search'] %}
+          <aside class="sidebar right" style="justify-self:end;text-align:right">
+            <h3>Лидерборд</h3>
+            <ol class="leader">
+              {% for u in side_top %}
+                <li>
+                  {% if u['avatar_path'] %}
+                    <img src="{{ url_for('static', filename=u['avatar_path']) }}" alt="a" class="avatar-sm"/>
+                  {% endif %}
+                  <span>{{ u['display_name'] or u['username'] }}</span>
+                  <span class="muted">{{ u['points'] or 0 }} pts</span>
+                </li>
+              {% endfor %}
+            </ol>
+          </aside>
+        {% endif %}
+      </div>
+    </main>
+    <script>
+      function toggleCategory(catId) {
+        const element = document.getElementById(catId);
+        const header = element.previousElementSibling;
+        const icon = header.querySelector('.toggle-icon');
+        
+        if (element.classList.contains('expanded')) {
+          element.classList.remove('expanded');
+          icon.textContent = '▶';
+          header.parentElement.classList.remove('expanded');
+        } else {
+          element.classList.add('expanded');
+          icon.textContent = '▼';
+          header.parentElement.classList.add('expanded');
+        }
+      }
+    </script>
+  </body>
+  </html>
+

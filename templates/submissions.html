@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Отправки{% endblock %}
+{% block content %}
+  <a href="{{ url_for('categories') }}" class="back">← Назад к задачам</a>
+  <h1>Мои отправки</h1>
+  {% if submissions %}
+    <table class="table">
+      <thead><tr><th>ID</th><th>Задача</th><th>Статус</th><th>Время</th></tr></thead>
+      <tbody>
+        {% for s in submissions %}
+          <tr>
+            <td><a href="{{ url_for('submission_detail', solution_id=s['id']) }}">{{ s['id'] }}</a></td>
+            <td>{{ s['task_title'] }}</td>
+            <td>{% if s['passed'] %}<span class="ok">OK</span>{% else %}<span class="bad">FAIL</span>{% endif %}</td>
+            <td>{{ s['created_at'] }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>Ещё нет отправок.</p>
+  {% endif %}
+{% endblock %}
+

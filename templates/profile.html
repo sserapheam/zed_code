@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% block title %}Профиль{% endblock %}
+{% block content %}
+  <h1>Профиль</h1>
+  
+  <div class="profile-header">
+    <div>
+      {% if user['avatar_path'] %}
+        <img src="{{ url_for('static', filename=user['avatar_path']) }}" alt="avatar" class="avatar-large"/>
+      {% else %}
+        <div class="avatar-placeholder">нет фото</div>
+      {% endif %}
+    </div>
+    <div class="profile-info">
+      <h2>{{ user['display_name'] or user['username'] }}</h2>
+      <p class="muted">@{{ user['username'] }}</p>
+      {% if user['bio'] %}
+        <p>{{ user['bio'] }}</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="profile-stats">
+    <div class="stat-card">
+      <div class="stat-value">{{ user['points'] or 0 }}</div>
+      <div class="stat-label">Баллы</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">{{ submissions_count or 0 }}</div>
+      <div class="stat-label">Отправок</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">{{ solved_count or 0 }}</div>
+      <div class="stat-label">Решено</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Редактировать профиль</h2>
+    <form method="post" enctype="multipart/form-data" class="form">
+      <label>
+        Отображаемое имя
+        <input type="text" name="display_name" value="{{ user['display_name'] or '' }}" placeholder="Ваше имя"/>
+      </label>
+      <label>
+        О себе
+        <textarea name="bio" rows="4" placeholder="Расскажите о себе...">{{ user['bio'] or '' }}</textarea>
+      </label>
+      <label>
+        Аватар
+        <input type="file" name="avatar" accept="image/*" onchange="previewAvatar(event)" />
+        <small class="muted">PNG, JPG или GIF до 5MB</small>
+      </label>
+      <div id="avatarPreview" class="avatar-preview"></div>
+      <div class="actions">
+        <button type="submit" class="btn">Сохранить изменения</button>
+        <a href="{{ url_for('categories') }}" class="btn secondary">Отмена</a>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    function previewAvatar(e) {
+      const file = e.target.files && e.target.files[0];
+      const box = document.getElementById('avatarPreview');
+      box.innerHTML = '';
+      
+      if (!file) return;
+      
+      if (file.size > 5 * 1024 * 1024) {
+        box.innerHTML = '<p style="color: var(--danger); font-size: 0.9rem;">Файл слишком большой. Максимум 5MB.</p>';
+        return;
+      }
+      
+      const img = document.createElement('img');
+      img.className = 'avatar-large';
+      img.src = URL.createObjectURL(file);
+      box.appendChild(img);
+    }
+  </script>
+{% endblock %}
+

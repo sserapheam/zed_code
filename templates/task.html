@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% block title %}{{ task['title'] }}{% endblock %}
+{% block content %}
+  <a href="{{ url_for('categories') }}" class="back">← Назад к задачам</a>
+  
+  <div class="panel">
+    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+      <h1 style="margin: 0; flex: 1;">{{ task['title'] }}</h1>
+      {% if task['level'] %}
+        <span class="badge {{ task['level'] }}">{{ task['level']|capitalize }}</span>
+      {% endif %}
+      <span class="muted">{{ task['points'] }} баллов</span>
+    </div>
+    
+    <div style="background: var(--bg); padding: 1.5rem; border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 1.5rem;">
+      <h3 style="margin: 0 0 1rem 0; color: var(--text);">Описание задачи</h3>
+      <div style="white-space: pre-wrap; line-height: 1.6; font-family: var(--font-family);">{{ task['description'] }}</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Ваше решение</h2>
+    <form method="post" class="form">
+      <input type="hidden" name="duration_ms" id="duration_ms" />
+      <label>
+        Код на Python
+        <textarea name="code" rows="16" spellcheck="false" placeholder="# Введите ваше решение здесь...">{{ code_prefill }}</textarea>
+      </label>
+      <div class="actions">
+        <button type="submit" class="btn">Отправить решение</button>
+        <button type="button" class="btn secondary" onclick="clearCode()">Очистить</button>
+      </div>
+    </form>
+  </div>
+
+  {% if results %}
+    <div class="panel">
+      <h2>Результаты проверки</h2>
+      <div style="display: grid; gap: 0.75rem;">
+        {% for r in results['results'] %}
+          <div style="display: flex; align-items: center; gap: 1rem; padding: 1rem; background: var(--bg); border-radius: var(--radius); border: 1px solid var(--border);">
+            <span style="font-weight: 600; min-width: 80px;">Тест {{ r['case'] }}:</span>
+            {% if r['status'] == 'OK' %}
+              <span class="ok">✓ Пройден</span>
+            {% elif r['status'] == 'WA' %}
+              <span class="bad">✗ Неверный ответ</span>
+              {% if r.get('message') %}
+                <span class="muted">{{ r['message'] }}</span>
+              {% endif %}
+            {% elif r['status'] == 'TIMEOUT' %}
+              <span class="bad">⏱ Превышено время</span>
+              {% if r.get('message') %}
+                <span class="muted">{{ r['message'] }}</span>
+              {% endif %}
+            {% else %}
+              <span class="bad">💥 Ошибка выполнения</span>
+              {% if r.get('message') %}
+                <span class="muted">{{ r['message'] }}</span>
+              {% endif %}
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <script>
+    // Таймер решения
+    let startTs = Date.now();
+    const form = document.querySelector('form');
+    if (form) {
+      form.addEventListener('submit', function(){
+        document.getElementById('duration_ms').value = String(Date.now() - startTs);
+      });
+    }
+    
+    function clearCode() {
+      const textarea = document.querySelector('textarea[name="code"]');
+      if (textarea) {
+        textarea.value = '';
+        textarea.focus();
+      }
+    }
+  </script>
+{% endblock %}
+

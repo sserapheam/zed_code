@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Отправка #{{ submission['id'] }}{% endblock %}
+{% block content %}
+  <a href="{{ url_for('submissions') }}" class="back">← К отправкам</a>
+  <h1>Отправка #{{ submission['id'] }}</h1>
+  <p><strong>Задача:</strong> {{ submission['task_title'] }}</p>
+  <p><strong>Статус:</strong> {% if submission['passed'] %}<span class="ok">OK</span>{% else %}<span class="bad">FAIL</span>{% endif %}</p>
+  <p><strong>Время:</strong> {{ submission['created_at'] }}</p>
+
+  <h2>Результаты</h2>
+  {% if result %}
+    <table class="table">
+      <thead><tr><th>#</th><th>Статус</th><th>Сообщение</th></tr></thead>
+      <tbody>
+        {% for r in result['results'] %}
+          <tr>
+            <td>{{ r['case'] }}</td>
+            <td>
+              {% if r['status'] == 'OK' %}<span class="ok">OK</span>
+              {% elif r['status'] == 'WA' %}<span class="bad">WA</span>
+              {% elif r['status'] == 'TIMEOUT' %}<span class="bad">TIMEOUT</span>
+              {% else %}<span class="bad">RUNTIME</span>
+              {% endif %}
+            </td>
+            <td>{{ r.get('message', '') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>Деталей нет.</p>
+  {% endif %}
+
+  <h2>Код</h2>
+  <pre class="desc">{{ submission['code'] }}</pre>
+{% endblock %}
+

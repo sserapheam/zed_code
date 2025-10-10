@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}Лидерборд{% endblock %}
+{% block content %}
+  <div style="text-align: center; margin-bottom: 2rem;">
+    <h1 style="margin-bottom: 0.5rem;">🏆 Лидерборд</h1>
+    <p class="muted">Топ решателей задач по Python</p>
+  </div>
+
+  <div class="panel">
+    <div style="display: grid; gap: 1rem;">
+      {% for u in top %}
+        <div class="leaderboard-item {% if loop.index <= 3 %}podium-{{ loop.index }}{% endif %}">
+          <div class="rank">
+            {% if loop.index == 1 %}🥇
+            {% elif loop.index == 2 %}🥈
+            {% elif loop.index == 3 %}🥉
+            {% else %}{{ loop.index }}
+            {% endif %}
+          </div>
+          <div class="user-info">
+            {% if u['avatar_path'] %}
+              <img src="{{ url_for('static', filename=u['avatar_path']) }}" alt="avatar" class="avatar-leaderboard"/>
+            {% else %}
+              <div class="avatar-placeholder-small">👤</div>
+            {% endif %}
+            <div class="user-details">
+              <div class="username">{{ u['display_name'] or u['username'] }}</div>
+              <div class="user-stats">
+                <span class="points">{{ u['points'] or 0 }} баллов</span>
+                {% if u['solved_count'] %}
+                  <span class="solved">{{ u['solved_count'] }} решено</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="achievement">
+            {% if loop.index == 1 %}
+              <span class="achievement-badge gold">Лидер</span>
+            {% elif loop.index <= 3 %}
+              <span class="achievement-badge silver">Топ-3</span>
+            {% elif loop.index <= 10 %}
+              <span class="achievement-badge bronze">Топ-10</span>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endblock %}
+

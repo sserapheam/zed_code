@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Регистрация{% endblock %}
+{% block content %}
+  <div class="panel" style="max-width: 400px; margin: 0 auto;">
+    <div style="text-align: center; margin-bottom: 2rem;">
+      <h1 style="margin-bottom: 0.5rem;">Создать аккаунт</h1>
+      <p class="muted">Начните решать задачи прямо сейчас</p>
+    </div>
+    
+    <form method="post" class="form">
+      <label>
+        Логин
+        <input type="text" name="username" required placeholder="Придумайте логин" />
+      </label>
+      <label>
+        Пароль
+        <input type="password" name="password" required placeholder="Придумайте пароль" />
+      </label>
+      <div class="actions">
+        <button type="submit" class="btn" style="width: 100%; justify-content: center;">Создать аккаунт</button>
+      </div>
+    </form>
+    
+    <div style="text-align: center; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
+      <p class="muted">Уже есть аккаунт?</p>
+      <a href="{{ url_for('login') }}" class="btn secondary" style="width: 100%; justify-content: center;">Войти</a>
+    </div>
+  </div>
+{% endblock %}
+
