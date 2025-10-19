@@ -3825,6 +3825,245 @@ html.dark-theme .CodeMirror .CodeMirror-linenumber {
   color: #a0a0a0 !important;
   padding: 0 4px !important;
 }
+/* Улучшенные стили для песочницы */
+.editor-section {
+  position: relative;
+  margin-bottom: 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.editor-icon {
+  font-size: 1.2rem;
+}
+
+.editor-label {
+  font-size: 1rem;
+}
+
+.code-editor-container {
+  padding: 1rem;
+  background: var(--bg);
+}
+
+.code-editor-container textarea {
+  width: 100%;
+  min-height: 400px;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.code-editor-container textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+/* Стили для результатов выполнения */
+.execution-results {
+  margin-top: 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.results-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.results-icon {
+  font-size: 1.2rem;
+}
+
+.execution-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.execution-time {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.time-icon {
+  font-size: 0.9rem;
+}
+
+.execution-status {
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.execution-status.success {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.execution-status.error {
+  background: var(--error-light);
+  color: var(--error);
+}
+
+/* Секции вывода и ошибок */
+.output-section,
+.error-section {
+  border-bottom: 1px solid var(--border);
+}
+
+.output-section:last-child,
+.error-section:last-child {
+  border-bottom: none;
+}
+
+.output-header,
+.error-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.output-icon,
+.error-icon {
+  font-size: 1rem;
+}
+
+.output-label,
+.error-label {
+  font-size: 0.9rem;
+}
+
+.output-content,
+.error-content {
+  padding: 1rem 1.5rem;
+  background: var(--bg-secondary);
+}
+
+.output-text,
+.error-text {
+  margin: 0;
+  padding: 1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  color: var(--text);
+}
+
+.error-text {
+  color: var(--error);
+  border-color: var(--error);
+  background: var(--error-light);
+}
+
+
+/* Улучшенные кнопки для песочницы */
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.action-buttons .btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 140px;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-icon {
+  font-size: 1rem;
+}
+
+.action-buttons .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.action-buttons .btn {
+  opacity: 1 !important;
+}
+
+.action-buttons .btn.primary {
+  background: var(--primary);
+  color: white;
+  border: none;
+  opacity: 1 !important;
+}
+
+.action-buttons .btn.primary:hover {
+  background: var(--primary) !important;
+  border: 2px solid var(--primary) !important;
+  box-shadow: 0 0 0 2px var(--primary-light) !important;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+.action-buttons .btn.secondary {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.action-buttons .btn.secondary:hover {
+  background: var(--bg-secondary);
+  border-color: var(--border-hover);
+}
+
 /* Стили для пагинации и загрузки */
 .loading-indicator {
   display: flex;

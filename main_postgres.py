@@ -30,7 +30,7 @@ try:
     from psycopg2.extras import RealDictCursor
     from sqlalchemy import create_engine, text
 except ImportError:
-    print("❌ Ошибка: Не установлены библиотеки для PostgreSQL")
+    print("ОШИБКА: Не установлены библиотеки для PostgreSQL")
     print("Установите их командой: pip install psycopg2-binary sqlalchemy")
     exit(1)
 
@@ -67,7 +67,7 @@ def create_app() -> Flask:
         current_part = ""
         
         # Разбиваем по ключевым словам
-        keywords = ['Example \d+:', 'Input:', 'Output:', 'Explanation:', 'Constraints:', 'Follow-up:']
+        keywords = ['Example \\d+:', 'Input:', 'Output:', 'Explanation:', 'Constraints:', 'Follow-up:']
         pattern = '|'.join(keywords)
         
         # Находим все вхождения ключевых слов
@@ -724,11 +724,15 @@ def create_app() -> Flask:
             code = request.form.get("code", "")
             language = request.form.get("language", "python3")
             
+            # Отладочная информация
+            print(f"DEBUG: code = '{code[:100]}...'")
+            print(f"DEBUG: language = '{language}'")
+            
             if code.strip():
                 try:
                     # Выполняем код в зависимости от языка
                     if language == "python3":
-                        result = _run_with_timeout(code, "", 5.0)
+                        result = _run_with_timeout(code, 5.0)
                     elif language == "javascript":
                         # Для JavaScript используем Node.js
                         result = _run_javascript_with_timeout(code, 5.0)
@@ -920,6 +924,7 @@ def _run_javascript_with_timeout(code: str, time_limit_sec: float) -> Dict[str, 
         env = os.environ.copy()
         env['NODE_OPTIONS'] = '--max-old-space-size=4096'
         
+        # Выполняем код через Node.js
         result = subprocess.run(
             ['node', temp_file],
             capture_output=True,
@@ -1020,7 +1025,7 @@ def _run_compiled_with_timeout(code: str, language: str, time_limit_sec: float) 
                 "execution_time": int((time.time() - start_time) * 1000)
             }
         
-        # Выполняем скомпилированный код с правильной кодировкой
+        # Выполняем скомпилированный код
         run_result = subprocess.run(
             run_cmd,
             capture_output=True,
@@ -1059,11 +1064,14 @@ def _run_compiled_with_timeout(code: str, language: str, time_limit_sec: float) 
     except Exception as e:
         return {"ok": False, "error": f"Ошибка выполнения: {str(e)}", "execution_time": 0}
 
-def _run_with_timeout(code: str, input_text: str, time_limit_sec: float) -> Dict[str, object]:
+def _run_with_timeout(code: str, time_limit_sec: float) -> Dict[str, object]:
     """Выполнение Python кода с таймаутом"""
     import subprocess
     import tempfile
     import time
+    
+    # Отладочная информация
+    print(f"DEBUG: Starting Python execution...")
     
     try:
         # Создаем временный файл для Python кода с кодировкой UTF-8
@@ -1078,6 +1086,7 @@ def _run_with_timeout(code: str, input_text: str, time_limit_sec: float) -> Dict
         env['PYTHONIOENCODING'] = 'utf-8'
         env['PYTHONUTF8'] = '1'
         
+        # Выполняем код через Python
         result = subprocess.run(
             ['python', '-u', temp_file],
             capture_output=True,
@@ -1088,7 +1097,16 @@ def _run_with_timeout(code: str, input_text: str, time_limit_sec: float) -> Dict
             env=env
         )
         
+        stdout = result.stdout
+        stderr = result.stderr
+        return_code = result.returncode
+        
         execution_time = int((time.time() - start_time) * 1000)
+        
+        # Отладочная информация
+        print(f"DEBUG: Execution completed. Return code: {result.returncode}")
+        print(f"DEBUG: Stdout: {result.stdout[:100]}...")
+        print(f"DEBUG: Stderr: {result.stderr[:100]}...")
         
         # Удаляем временный файл
         os.unlink(temp_file)

@@ -27,43 +27,88 @@
         <input type="hidden" name="language" id="selected-language" value="python3" />
         
         <!-- Единый редактор кода -->
-        <div class="code-editor-container">
-          <textarea id="code-editor" name="code" placeholder="Введите код..."># Пример кода на Python
+        <div class="editor-section">
+          <div class="editor-header">
+            <span class="editor-icon">💻</span>
+            <span class="editor-label">Редактор кода</span>
+          </div>
+          <div class="code-editor-container">
+            <textarea id="code-editor" name="code" placeholder="Введите код..."># Пример кода на Python
 def hello_world():
     print("Привет, мир!")
     return "Hello, World!"
 
 # Вызов функции
 result = hello_world()
-print(f"Результат: {result}")</textarea>
+print(f"Результат: {result}")
+
+# Простые вычисления
+numbers = [1, 2, 3, 4, 5]
+sum_numbers = sum(numbers)
+print(f"Сумма чисел {numbers}: {sum_numbers}")</textarea>
+          </div>
         </div>
 
+
         <div class="form-actions">
-          <button type="button" class="btn secondary" onclick="clearCode()">Очистить</button>
-          <button type="button" class="btn secondary" onclick="resetCode()">Сбросить</button>
-          <button type="submit" class="btn primary">Выполнить код</button>
+          <div class="action-buttons">
+            <button type="button" class="btn secondary" onclick="clearCode()">
+              <span class="btn-icon">🗑️</span>
+              Очистить
+            </button>
+            <button type="button" class="btn secondary" onclick="resetCode()">
+              <span class="btn-icon">🔄</span>
+              Сбросить
+            </button>
+            <button type="submit" class="btn primary">
+              <span class="btn-icon">▶️</span>
+              Выполнить код
+            </button>
+          </div>
         </div>
       </form>
 
       {% if results %}
-        <div class="results">
-          <h3>Результат выполнения:</h3>
-          <div class="result-item">
-            <div class="result-header">
-              <span class="result-status {{ 'success' if results.get('success') else 'error' }}">
+        <div class="execution-results">
+          <div class="results-header">
+            <h3>
+              <span class="results-icon">{{ '✅' if results.get('success') else '❌' }}</span>
+              Результат выполнения
+            </h3>
+            <div class="execution-info">
+              <span class="execution-time">
+                <span class="time-icon">⏱️</span>
+                {{ results.get('execution_time', 0) }}мс
+              </span>
+              <span class="execution-status {{ 'success' if results.get('success') else 'error' }}">
                 {{ 'Успешно' if results.get('success') else 'Ошибка' }}
               </span>
-              <span class="result-time">{{ results.get('execution_time', 0) }}мс</span>
-            </div>
-            <div class="result-output">
-              <pre>{{ results.get('output', '') }}</pre>
-              {% if results.get('error') %}
-                <div class="error-message">
-                  <strong>Ошибка:</strong> {{ results.get('error') }}
-                </div>
-              {% endif %}
             </div>
           </div>
+          
+          {% if results.get('output') %}
+            <div class="output-section">
+              <div class="output-header">
+                <span class="output-icon">📤</span>
+                <span class="output-label">Вывод программы</span>
+              </div>
+              <div class="output-content">
+                <pre class="output-text">{{ results.get('output', '') }}</pre>
+              </div>
+            </div>
+          {% endif %}
+          
+          {% if results.get('error') %}
+            <div class="error-section">
+              <div class="error-header">
+                <span class="error-icon">⚠️</span>
+                <span class="error-label">Ошибка выполнения</span>
+              </div>
+              <div class="error-content">
+                <pre class="error-text">{{ results.get('error') }}</pre>
+              </div>
+            </div>
+          {% endif %}
         </div>
       {% endif %}
     </div>
@@ -273,6 +318,7 @@ int main() {
       }
     }
   });
+
 
   // Сохранение кода перед отправкой формы
   document.querySelector('.sandbox-form').addEventListener('submit', function() {
