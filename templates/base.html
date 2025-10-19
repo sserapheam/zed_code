@@ -6,16 +6,16 @@
     <title>{% block title %}Учебный тренажёр{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
-  <body>
+  <body class="{% block body_class %}{% endblock %}">
     <nav class="nav">
       <div class="container nav-inner">
-        <a href="{{ url_for('categories') }}" class="brand">Python Tasks</a>
+        <a href="{{ url_for('problems') }}" class="brand">LeetCode Clone</a>
         <div class="spacer"></div>
         <form class="search" method="get" action="{{ url_for('search') }}">
           <input type="text" name="q" placeholder="Поиск задач..." value="{{ request.args.get('q','') }}" />
         </form>
         {% if session.get('user_id') %}
-          <a class="btn secondary" href="{{ url_for('categories') }}">Задачи</a>
+          <a class="btn secondary" href="{{ url_for('problems') }}">Задачи</a>
           <a class="btn secondary" href="{{ url_for('leaderboard') }}">Лидерборд</a>
           <a class="btn secondary" href="{{ url_for('submissions') }}">Отправки</a>
           <a class="btn secondary" href="{{ url_for('profile') }}">Профиль ({{ session.get('username') }})</a>
@@ -45,7 +45,7 @@
           </section>
         </div>
 
-        {% if session.get('user_id') and request.endpoint in ['categories','task_detail','search'] %}
+        {% if session.get('user_id') and request.endpoint in ['search'] %}
           <aside class="sidebar right" style="justify-self:end;text-align:right">
             <h3>Лидерборд</h3>
             <ol class="leader">

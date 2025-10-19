@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% block title %}{% if selected_topic %}{{ selected_topic }}{% else %}Задачи{% endif %}{% endblock %}
+{% block content %}
+  {% if selected_topic %}
+    <!-- Страница конкретной темы -->
+    <div class="problems-header">
+      <div class="problems-nav">
+        <a href="{{ url_for('problems') }}" class="nav-link">Задачи</a>
+        <span class="nav-separator">›</span>
+        <span class="nav-current">{{ selected_topic }}</span>
+      </div>
+      
+      <div class="problems-filters">
+        <div class="filter-tabs">
+          <a href="{{ url_for('problems', topic=selected_topic) }}" 
+             class="filter-tab {{ 'active' if not difficulty_filter else '' }}">Все</a>
+          <a href="{{ url_for('problems', topic=selected_topic, difficulty='Easy') }}" 
+             class="filter-tab {{ 'active' if difficulty_filter == 'Easy' else '' }}">Легкие</a>
+          <a href="{{ url_for('problems', topic=selected_topic, difficulty='Medium') }}" 
+             class="filter-tab {{ 'active' if difficulty_filter == 'Medium' else '' }}">Средние</a>
+          <a href="{{ url_for('problems', topic=selected_topic, difficulty='Hard') }}" 
+             class="filter-tab {{ 'active' if difficulty_filter == 'Hard' else '' }}">Сложные</a>
+        </div>
+      </div>
+    </div>
+      
+    <div class="problems-list">
+      {% for p in problems %}
+        <div class="problem-item">
+          <div class="problem-content">
+            <div class="problem-title">
+              <a href="{{ url_for('problem_detail', problem_id=p['problem_id']) }}" class="title-link">
+                {{ p['problem_id'] }}. {{ p['title'] }}
+              </a>
+            </div>
+            <div class="problem-meta">
+              <span class="difficulty {{ p['difficulty'] or 'Easy' }}">{{ p['difficulty'] or 'Easy' }}</span>
+              {% if p['last_passed'] is not none %}
+                <span class="status {{ 'solved' if p['last_passed'] else 'attempted' }}">
+                  {% if p['last_passed'] %}✓ Решено{% else %}✗ Попытка{% endif %}
+                </span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="problem-actions">
+            <a href="{{ url_for('problem_detail', problem_id=p['problem_id']) }}" class="btn-solve">
+              {% if p['last_passed'] %}Повторить{% else %}Решить{% endif %}
+            </a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <!-- Главная страница со списком тем и задач -->
+    <div class="problems-header">
+      <h1 class="problems-title">Задачи</h1>
+      <div class="problems-stats">
+        <span class="stat-item">{{ topics|sum(attribute='problem_count') }} задач</span>
+        <span class="stat-item">{{ topics|length }} тем</span>
+      </div>
+    </div>
+
+    <!-- Компактные кнопки тем -->
+    <div class="topics-filter">
+      <div class="topics-buttons">
+        <a href="{{ url_for('problems') }}" class="topic-btn {{ 'active' if not selected_topic else '' }}">
+          Все темы
+        </a>
+        {% for t in topics %}
+          <a href="{{ url_for('problems', topic=t['topic']) }}" class="topic-btn">
+            {{ t['topic'] }}
+            <span class="topic-count">{{ t['problem_count'] }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Список всех задач -->
+    <div class="problems-list">
+      {% for p in all_problems %}
+        <div class="problem-item">
+          <div class="problem-content">
+            <div class="problem-title">
+              <a href="{{ url_for('problem_detail', problem_id=p['problem_id']) }}" class="title-link">
+                {{ p['problem_id'] }}. {{ p['title'] }}
+              </a>
+            </div>
+            <div class="problem-meta">
+              <span class="difficulty {{ p['difficulty'] or 'Easy' }}">{{ p['difficulty'] or 'Easy' }}</span>
+              {% if p['topic_tags'] %}
+                <div class="problem-tags">
+                  {% for tag in p['topic_tags'][:2] %}
+                    <span class="tag">{{ tag }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if p['last_passed'] is not none %}
+                <span class="status {{ 'solved' if p['last_passed'] else 'attempted' }}">
+                  {% if p['last_passed'] %}✓ Решено{% else %}✗ Попытка{% endif %}
+                </span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="problem-actions">
+            <a href="{{ url_for('problem_detail', problem_id=p['problem_id']) }}" class="btn-solve">
+              {% if p['last_passed'] %}Повторить{% else %}Решить{% endif %}
+            </a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endblock %}

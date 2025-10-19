@@ -3,7 +3,10 @@
 {% block content %}
   <a href="{{ url_for('submissions') }}" class="back">← К отправкам</a>
   <h1>Отправка #{{ submission['id'] }}</h1>
-  <p><strong>Задача:</strong> {{ submission['task_title'] }}</p>
+  <p><strong>Задача:</strong> {{ submission['problem_title'] }}</p>
+  {% if submission['difficulty'] %}
+    <p><strong>Сложность:</strong> <span class="badge {{ submission['difficulty'] }}">{{ submission['difficulty'] }}</span></p>
+  {% endif %}
   <p><strong>Статус:</strong> {% if submission['passed'] %}<span class="ok">OK</span>{% else %}<span class="bad">FAIL</span>{% endif %}</p>
   <p><strong>Время:</strong> {{ submission['created_at'] }}</p>
 

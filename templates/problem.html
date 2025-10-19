@@ -1,0 +1,243 @@
+{% extends 'base.html' %}
+{% block title %}{{ problem['title'] }}{% endblock %}
+{% block body_class %}problem-page{% endblock %}
+{% block content %}
+  <a href="{{ url_for('problems') }}" class="back">← Назад к задачам</a>
+  
+  <div class="problem-layout">
+    <!-- Левая колонка - описание задачи -->
+    <div class="problem-description">
+      <div class="panel">
+        <div class="problem-header">
+          <h1>{{ problem['title'] }}</h1>
+          {% if problem['difficulty'] %}
+            <span class="badge {{ problem['difficulty'] }}">{{ problem['difficulty'] }}</span>
+          {% endif %}
+        </div>
+        
+        <div class="problem-content">
+          <div class="description-text">{{ problem['description']|clean_html|safe }}</div>
+          
+          {% if tags %}
+            <div class="tags-section">
+              <h4>Теги:</h4>
+              <div class="tags-list">
+                {% for tag in tags %}
+                  <span class="chip">{{ tag }}</span>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Правая колонка - песочница -->
+    <div class="problem-sandbox">
+      <div class="panel">
+        <div class="code-editor-header">
+          <h2>Ваше решение</h2>
+          <div class="language-selector">
+            <label for="language-select">Язык:</label>
+            <select id="language-select" onchange="switchLanguage()">
+              {% if problem['code_python3'] %}
+                <option value="python3" selected>Python 3</option>
+              {% endif %}
+              {% if problem['code_javascript'] %}
+                <option value="javascript">JavaScript</option>
+              {% endif %}
+              {% if problem['code_java'] %}
+                <option value="java">Java</option>
+              {% endif %}
+              {% if problem['code_c'] %}
+                <option value="c">C</option>
+              {% endif %}
+              {% if problem['code_csharp'] %}
+                <option value="csharp">C#</option>
+              {% endif %}
+              {% if problem['code_cpp'] %}
+                <option value="cpp">C++</option>
+              {% endif %}
+            </select>
+          </div>
+        </div>
+    
+    <form method="post" class="form">
+      <input type="hidden" name="duration_ms" id="duration_ms" />
+      <input type="hidden" name="language" id="selected-language" value="python3" />
+      
+      <!-- Python 3 -->
+      {% if problem['code_python3'] %}
+        <div class="code-editor" id="editor-python3" style="display: block;">
+          <label>
+            Код на Python 3
+            <textarea name="code" rows="16" spellcheck="false" placeholder="# Введите ваше решение здесь...">{{ code_prefill if code_prefill else problem['code_python3'] }}</textarea>
+          </label>
+        </div>
+      {% endif %}
+      
+      <!-- JavaScript -->
+      {% if problem['code_javascript'] %}
+        <div class="code-editor" id="editor-javascript" style="display: none;">
+          <label>
+            Код на JavaScript
+            <textarea name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ problem['code_javascript'] }}</textarea>
+          </label>
+        </div>
+      {% endif %}
+      
+      <!-- Java -->
+      {% if problem['code_java'] %}
+        <div class="code-editor" id="editor-java" style="display: none;">
+          <label>
+            Код на Java
+            <textarea name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ problem['code_java'] }}</textarea>
+          </label>
+        </div>
+      {% endif %}
+      
+      <!-- C -->
+      {% if problem['code_c'] %}
+        <div class="code-editor" id="editor-c" style="display: none;">
+          <label>
+            Код на C
+            <textarea name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ problem['code_c'] }}</textarea>
+          </label>
+        </div>
+      {% endif %}
+      
+      <!-- C# -->
+      {% if problem['code_csharp'] %}
+        <div class="code-editor" id="editor-csharp" style="display: none;">
+          <label>
+            Код на C#
+            <textarea name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ problem['code_csharp'] }}</textarea>
+          </label>
+        </div>
+      {% endif %}
+      
+      <!-- C++ -->
+      {% if problem['code_cpp'] %}
+        <div class="code-editor" id="editor-cpp" style="display: none;">
+          <label>
+            Код на C++
+            <textarea name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ problem['code_cpp'] }}</textarea>
+          </label>
+        </div>
+      {% endif %}
+      
+      <div class="actions">
+        <button type="submit" class="btn">Отправить решение</button>
+        <button type="button" class="btn secondary" onclick="clearCode()">Очистить</button>
+        <button type="button" class="btn secondary" onclick="resetToStarter()">Сбросить к стартовому коду</button>
+        </div>
+      </form>
+      
+      {% if results %}
+        <div class="results-section">
+          <h3>Результаты проверки</h3>
+          <div class="results-list">
+            {% for r in results['results'] %}
+              <div class="result-item">
+                <span class="result-test">Тест {{ r['case'] }}:</span>
+                {% if r['status'] == 'OK' %}
+                  <span class="ok">✓ Пройден</span>
+                {% elif r['status'] == 'WA' %}
+                  <span class="bad">✗ Неверный ответ</span>
+                  {% if r.get('message') %}
+                    <span class="muted">{{ r['message'] }}</span>
+                  {% endif %}
+                {% elif r['status'] == 'TIMEOUT' %}
+                  <span class="bad">⏱ Превышено время</span>
+                  {% if r.get('message') %}
+                    <span class="muted">{{ r['message'] }}</span>
+                  {% endif %}
+                {% else %}
+                  <span class="bad">💥 Ошибка выполнения</span>
+                  {% if r.get('message') %}
+                    <span class="muted">{{ r['message'] }}</span>
+                  {% endif %}
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Таймер решения
+    let startTs = Date.now();
+    const form = document.querySelector('form');
+    if (form) {
+      form.addEventListener('submit', function(){
+        document.getElementById('duration_ms').value = String(Date.now() - startTs);
+      });
+    }
+    
+    // Стартовые коды для каждого языка
+    const starterCodes = {
+      {% if problem['code_python3'] %}
+        'python3': `{{ problem['code_python3']|e }}`,
+      {% endif %}
+      {% if problem['code_javascript'] %}
+        'javascript': `{{ problem['code_javascript']|e }}`,
+      {% endif %}
+      {% if problem['code_java'] %}
+        'java': `{{ problem['code_java']|e }}`,
+      {% endif %}
+      {% if problem['code_c'] %}
+        'c': `{{ problem['code_c']|e }}`,
+      {% endif %}
+      {% if problem['code_csharp'] %}
+        'csharp': `{{ problem['code_csharp']|e }}`,
+      {% endif %}
+      {% if problem['code_cpp'] %}
+        'cpp': `{{ problem['code_cpp']|e }}`,
+      {% endif %}
+    };
+    
+    function switchLanguage() {
+      const selectedLang = document.getElementById('language-select').value;
+      const selectedLanguageInput = document.getElementById('selected-language');
+      
+      // Скрыть все редакторы
+      document.querySelectorAll('.code-editor').forEach(editor => {
+        editor.style.display = 'none';
+      });
+      
+      // Показать выбранный редактор
+      const activeEditor = document.getElementById('editor-' + selectedLang);
+      if (activeEditor) {
+        activeEditor.style.display = 'block';
+        // Обновить скрытое поле с языком
+        selectedLanguageInput.value = selectedLang;
+      }
+    }
+    
+    function clearCode() {
+      const activeEditor = document.querySelector('.code-editor[style*="block"]');
+      if (activeEditor) {
+        const textarea = activeEditor.querySelector('textarea[name="code"]');
+        if (textarea) {
+          textarea.value = '';
+          textarea.focus();
+        }
+      }
+    }
+    
+    function resetToStarter() {
+      const selectedLang = document.getElementById('language-select').value;
+      const activeEditor = document.querySelector('.code-editor[style*="block"]');
+      if (activeEditor && starterCodes[selectedLang]) {
+        const textarea = activeEditor.querySelector('textarea[name="code"]');
+        if (textarea) {
+          textarea.value = starterCodes[selectedLang];
+          textarea.focus();
+        }
+      }
+    }
+  </script>
+{% endblock %}

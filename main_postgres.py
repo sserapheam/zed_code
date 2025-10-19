@@ -1,6 +1,7 @@
 import os
 import json
 import traceback
+import html
 from datetime import datetime
 from multiprocessing import Process, Queue
 from typing import Dict, List, Tuple
@@ -49,6 +50,106 @@ def create_app() -> Flask:
     app.config["UPLOAD_FOLDER"] = os.path.join(os.path.dirname(__file__), "static", "uploads")
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
+    # Функция для обработки HTML-сущностей и форматирования
+    def clean_html_entities(text):
+        if not text:
+            return text
+        # Декодируем HTML-сущности
+        text = html.unescape(text)
+        # Заменяем &nbsp; на обычные пробелы
+        text = text.replace('&nbsp;', ' ')
+        
+        # Красивое форматирование для задач
+        import re
+        
+        # Сначала разбиваем текст на части
+        parts = []
+        current_part = ""
+        
+        # Разбиваем по ключевым словам
+        keywords = ['Example \d+:', 'Input:', 'Output:', 'Explanation:', 'Constraints:', 'Follow-up:']
+        pattern = '|'.join(keywords)
+        
+        # Находим все вхождения ключевых слов
+        matches = list(re.finditer(pattern, text))
+        
+        if not matches:
+            # Если нет ключевых слов, возвращаем как есть
+            return f'<p class="description-paragraph">{text}</p>'
+        
+        # Обрабатываем каждую секцию
+        last_end = 0
+        for match in matches:
+            # Добавляем текст до ключевого слова
+            if match.start() > last_end:
+                before_text = text[last_end:match.start()].strip()
+                if before_text:
+                    parts.append(('text', before_text))
+            
+            # Обрабатываем ключевое слово и следующий текст
+            keyword = match.group()
+            next_match = matches[matches.index(match) + 1] if matches.index(match) + 1 < len(matches) else None
+            end_pos = next_match.start() if next_match else len(text)
+            
+            content = text[match.end():end_pos].strip()
+            
+            if keyword.startswith('Example'):
+                parts.append(('example', keyword, content))
+            elif keyword in ['Input:', 'Output:']:
+                parts.append(('input_output', keyword, content))
+            elif keyword == 'Explanation:':
+                parts.append(('explanation', content))
+            elif keyword == 'Constraints:':
+                parts.append(('constraints', content))
+            elif keyword == 'Follow-up:':
+                parts.append(('followup', content))
+            
+            last_end = end_pos
+        
+        # Создаем HTML
+        html_content = []
+        in_example = False
+        
+        for part in parts:
+            if part[0] == 'text':
+                html_content.append(f'<p class="description-paragraph">{part[1]}</p>')
+            elif part[0] == 'example':
+                if in_example:
+                    html_content.append('</div>')
+                html_content.append(f'<div class="example-section"><h4 class="example-title">{part[1]}</h4>')
+                in_example = True
+            elif part[0] == 'input_output':
+                html_content.append(f'<div class="input-output"><strong>{part[1]}</strong> <code class="code-snippet">{part[2]}</code></div>')
+            elif part[0] == 'explanation':
+                html_content.append(f'<div class="explanation"><strong>Explanation:</strong> {part[1]}</div>')
+            elif part[0] == 'constraints':
+                if in_example:
+                    html_content.append('</div>')
+                    in_example = False
+                html_content.append(f'<div class="constraints-section"><h4 class="constraints-title">Constraints:</h4>')
+                # Разбиваем ограничения по строкам
+                constraints = part[1].split('.')
+                for constraint in constraints:
+                    constraint = constraint.strip()
+                    if constraint:
+                        html_content.append(f'<div class="constraint-item">{constraint}</div>')
+                html_content.append('</div>')
+            elif part[0] == 'followup':
+                if in_example:
+                    html_content.append('</div>')
+                    in_example = False
+                html_content.append(f'<div class="followup-section"><h4 class="followup-title">Follow-up:</h4><p class="followup-text">{part[1]}</p></div>')
+        
+        if in_example:
+            html_content.append('</div>')
+        
+        return ''.join(html_content)
+
+    # Регистрируем фильтр для шаблонов
+    @app.template_filter('clean_html')
+    def clean_html_filter(text):
+        return clean_html_entities(text)
+
     @app.before_request
     def before_request() -> None:
         g.db = get_db()
@@ -68,61 +169,94 @@ def create_app() -> Flask:
     @app.context_processor
     def inject_sidebars():
         if not session.get("user_id"):
-            return {"side_categories": [], "side_top": []}
+            return {"side_topics": [], "side_top": []}
         try:
-            cats = execute_query(g.db,
+            # Получаем уникальные темы из задач
+            topics = execute_query(g.db,
                 """
-                SELECT c.id, c.name, COUNT(t.id) as task_count 
-                FROM categories c LEFT JOIN tasks t ON t.category_id = c.id 
-                GROUP BY c.id, c.name ORDER BY c.name
+                SELECT DISTINCT unnest(topic_tags) as topic, COUNT(*) as problem_count
+                FROM real_leetcode_problems 
+                WHERE topic_tags IS NOT NULL
+                GROUP BY unnest(topic_tags)
+                ORDER BY topic
                 """
             )
         except Exception:
-            cats = []
+            topics = []
         try:
             top = execute_query(g.db,
                 "SELECT username, display_name, avatar_path, points FROM users ORDER BY points DESC, id ASC LIMIT 10"
             )
         except Exception:
             top = []
-        return {"side_categories": cats, "side_top": top}
+        return {"side_topics": topics, "side_top": top}
 
     @app.route("/")
     def index():
         if session.get("user_id"):
-            return redirect(url_for("categories"))
-        featured_categories = execute_query(g.db,
-            "SELECT id, name FROM categories ORDER BY name LIMIT 6"
+            return redirect(url_for("problems"))
+        
+        # Получаем популярные темы
+        featured_topics = execute_query(g.db,
+            """
+            SELECT topic, COUNT(*) as problem_count
+            FROM real_leetcode_problems 
+            WHERE topic IS NOT NULL AND topic != ''
+            GROUP BY topic
+            ORDER BY problem_count DESC
+            LIMIT 6
+            """
         )
-        recent_tasks = execute_query(g.db,
-            "SELECT id, title, points, level FROM tasks ORDER BY id DESC LIMIT 6"
+        
+        # Получаем недавние задачи
+        recent_problems = execute_query(g.db,
+            """
+            SELECT problem_id, title, difficulty, topic_tags
+            FROM real_leetcode_problems 
+            ORDER BY id DESC 
+            LIMIT 6
+            """
         )
+        
         top = execute_query(g.db,
             "SELECT username, display_name, avatar_path, points FROM users ORDER BY points DESC, id ASC LIMIT 5"
         )
         return render_template(
             "index.html",
-            featured_categories=featured_categories,
-            recent_tasks=recent_tasks,
+            featured_topics=featured_topics,
+            recent_problems=recent_problems,
             top=top,
         )
 
     @app.route("/search")
     def search():
         q = (request.args.get("q") or "").strip()
-        level = (request.args.get("level") or "").strip()
-        sql = "SELECT id, title, points, level FROM tasks WHERE 1=1"
+        difficulty = (request.args.get("difficulty") or "").strip()
+        topic = (request.args.get("topic") or "").strip()
+        
+        sql = """
+            SELECT problem_id, title, difficulty, topic_tags, topic
+            FROM real_leetcode_problems 
+            WHERE 1=1
+        """
         params = []
+        
         if q:
             sql += " AND (title ILIKE %s OR description ILIKE %s)"
             like = f"%{q}%"
             params.extend([like, like])
-        if level in {"easy", "medium", "hard"}:
-            sql += " AND level = %s"
-            params.append(level)
-        sql += " ORDER BY id DESC LIMIT 100"
+        
+        if difficulty in {"Easy", "Medium", "Hard"}:
+            sql += " AND difficulty = %s"
+            params.append(difficulty)
+            
+        if topic:
+            sql += " AND %s = ANY(topic_tags)"
+            params.append(topic)
+            
+        sql += " ORDER BY problem_id DESC LIMIT 100"
         results = execute_query(g.db, sql, params)
-        return render_template("search.html", q=q, results=results)
+        return render_template("search.html", q=q, difficulty=difficulty, topic=topic, results=results)
 
     @app.route("/register", methods=["GET", "POST"])
     def register():
@@ -157,7 +291,7 @@ def create_app() -> Flask:
             if user and check_password_hash(user["password_hash"], password):
                 session["user_id"] = user["id"]
                 session["username"] = username
-                return redirect(url_for("categories"))
+                return redirect(url_for("problems"))
             flash("Неверный логин или пароль", "error")
         return render_template("login.html")
 
@@ -169,114 +303,104 @@ def create_app() -> Flask:
     @app.route("/dashboard")
     def dashboard():
         if session.get("user_id"):
-            return redirect(url_for("categories"))
+            return redirect(url_for("problems"))
         return redirect(url_for("login"))
 
-    @app.route("/tasks")
-    def tasks_list():
+    @app.route("/problems-list")
+    def problems_list():
         user_id = session.get("user_id")
         if not user_id:
             return redirect(url_for("login"))
-        tasks = execute_query(g.db, "SELECT id, title FROM tasks ORDER BY id"
-        )
-        return render_template("dashboard.html", tasks=tasks, solutions=[])
+        problems = execute_query(g.db, "SELECT problem_id, title, difficulty FROM real_leetcode_problems ORDER BY problem_id")
+        return render_template("problems_list.html", problems=problems)
 
-    @app.route("/categories")
-    def categories():
+    @app.route("/problems")
+    def problems():
         user_id = session.get("user_id")
         if not user_id:
             return redirect(url_for("login"))
         
-        # Получаем все категории
-        cats = execute_query(g.db,
+        # Получаем все темы из колонки topic
+        topics = execute_query(g.db,
             """
-            SELECT c.id, c.name, COUNT(t.id) as task_count 
-            FROM categories c LEFT JOIN tasks t ON t.category_id = c.id 
-            GROUP BY c.id, c.name ORDER BY c.name
+            SELECT topic, COUNT(*) as problem_count
+            FROM real_leetcode_problems 
+            WHERE topic IS NOT NULL AND topic != ''
+            GROUP BY topic
+            ORDER BY problem_count DESC, topic
             """
         )
         
-        # Проверяем, выбрана ли конкретная категория
-        category_id = request.args.get('category_id')
-        selected_category = None
-        tasks = []
-        category_tree = []
+        # Проверяем, выбрана ли конкретная тема
+        selected_topic = request.args.get('topic')
+        difficulty_filter = request.args.get('difficulty', '').strip()
         
-        if category_id:
-            try:
-                category_id = int(category_id)
-                selected_category = execute_one(g.db, "SELECT id, name FROM categories WHERE id=%s", (category_id,))
-                if selected_category:
-                    # Получаем задачи для выбранной категории
-                    level_filter = (request.args.get("level") or "").strip()
-                    sql = """
-                        SELECT t.id, t.title, t.points, t.level, 
-                        (SELECT s.passed FROM solutions s WHERE s.task_id = t.id AND s.user_id = %s 
-                         ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS last_passed 
-                        FROM tasks t WHERE t.category_id = %s
-                    """
-                    params = [user_id, category_id]
-                    if level_filter in {"easy", "medium", "hard"}:
-                        sql += " AND t.level = %s"
-                        params.append(level_filter)
-                    sql += " ORDER BY t.id"
-                    tasks = execute_query(g.db, sql, params)
-                    
-                    # Создаем дерево категорий для левого меню
-                    for c in cats:
-                        cat_tasks_sql = """
-                            SELECT t.id, t.title, t.level 
-                            FROM tasks t 
-                            WHERE t.category_id = %s 
-                            ORDER BY t.level, t.id
-                        """
-                        cat_tasks = execute_query(g.db, cat_tasks_sql, (c['id'],))
-                        
-                        levels = {'easy': [], 'medium': [], 'hard': []}
-                        for task in cat_tasks:
-                            level = task['level'] or 'easy'
-                            if level in levels:
-                                levels[level].append(task)
-                        
-                        category_tree.append({
-                            'id': c['id'],
-                            'name': c['name'],
-                            'task_count': c['task_count'],
-                            'is_current': c['id'] == category_id,
-                            'levels': levels
-                        })
-            except ValueError:
-                pass  # Неверный category_id, игнорируем
+        problems = []
         
-        return render_template("categories.html", 
-                             categories=cats, 
-                             selected_category=selected_category,
-                             tasks=tasks,
-                             category_tree=category_tree)
+        if selected_topic:
+            # Получаем задачи для выбранной темы
+            sql = """
+                SELECT problem_id, title, difficulty, topic_tags,
+                (SELECT s.passed FROM solutions s WHERE s.task_id = problem_id AND s.user_id = %s 
+                 ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS last_passed 
+                FROM real_leetcode_problems 
+                WHERE topic = %s
+            """
+            params = [user_id, selected_topic]
+            
+            if difficulty_filter in {"Easy", "Medium", "Hard"}:
+                sql += " AND difficulty = %s"
+                params.append(difficulty_filter)
+                
+            sql += " ORDER BY problem_id"
+            problems = execute_query(g.db, sql, params)
+        
+        # Если не выбрана конкретная тема, получаем все задачи
+        all_problems = []
+        if not selected_topic:
+            all_problems = execute_query(g.db,
+                """
+                SELECT problem_id, title, difficulty, topic_tags,
+                (SELECT s.passed FROM solutions s WHERE s.task_id = problem_id AND s.user_id = %s 
+                 ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS last_passed 
+                FROM real_leetcode_problems 
+                ORDER BY problem_id
+                """,
+                (user_id,)
+            )
+        
+        return render_template("problems.html", 
+                             topics=topics, 
+                             selected_topic=selected_topic,
+                             difficulty_filter=difficulty_filter,
+                             problems=problems,
+                             all_problems=all_problems)
 
-    @app.route("/api/categories/<int:category_id>/tasks")
-    def api_category_tasks(category_id: int):
+    @app.route("/api/topics/<topic>/problems")
+    def api_topic_problems(topic: str):
         user_id = session.get("user_id")
         if not user_id:
             return jsonify({"error": "unauthorized"}), 401
+        
         sql = """
-            SELECT t.id, t.title, t.points, t.level, 
-            (SELECT s.passed FROM solutions s WHERE s.task_id = t.id AND s.user_id = %s 
+            SELECT problem_id, title, difficulty, topic_tags,
+            (SELECT s.passed FROM solutions s WHERE s.task_id = problem_id AND s.user_id = %s 
              ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS last_passed 
-            FROM tasks t WHERE t.category_id = %s ORDER BY t.level, t.id
+            FROM real_leetcode_problems 
+            WHERE topic = %s 
+            ORDER BY difficulty, problem_id
         """
-        rows = execute_query(g.db, sql, (user_id, category_id))
-        groups = {"easy": [], "medium": [], "hard": [], "other": []}
+        rows = execute_query(g.db, sql, (user_id, topic))
+        groups = {"Easy": [], "Medium": [], "Hard": []}
         for r in rows:
-            lvl = (r["level"] or "other").lower()
-            key = lvl if lvl in groups else "other"
-            groups[key].append({
-                "id": r["id"],
-                "title": r["title"],
-                "points": r["points"],
-                "level": r["level"],
-                "last_passed": r["last_passed"],
-            })
+            difficulty = r["difficulty"] or "Easy"
+            if difficulty in groups:
+                groups[difficulty].append({
+                    "problem_id": r["problem_id"],
+                    "title": r["title"],
+                    "difficulty": r["difficulty"],
+                    "last_passed": r["last_passed"],
+                })
         return jsonify(groups)
 
     @app.route("/profile", methods=["GET", "POST"])
@@ -329,51 +453,57 @@ def create_app() -> Flask:
         )
         return render_template("leaderboard.html", top=top)
 
-    @app.route("/task/<int:task_id>", methods=["GET", "POST"])
-    def task_detail(task_id: int):
+    @app.route("/problem/<int:problem_id>", methods=["GET", "POST"])
+    def problem_detail(problem_id: int):
         user_id = session.get("user_id")
         if not user_id:
             return redirect(url_for("login"))
 
-        task = execute_one(g.db,
+        problem = execute_one(g.db,
             """
-            SELECT t.id, t.title, t.description, t.starter_code, t.level, t.category_id, c.name as category_name 
-            FROM tasks t LEFT JOIN categories c ON c.id = t.category_id WHERE t.id=%s
+            SELECT problem_id, title, description, difficulty, 
+                   topic_tags, topic, code_python3, code_javascript, code_java, 
+                   code_c, code_csharp, code_cpp, examples, constraints
+            FROM real_leetcode_problems 
+            WHERE problem_id=%s
             """,
-            (task_id,),
+            (problem_id,),
         )
-        if not task:
+        if not problem:
             flash("Задача не найдена", "error")
-            return redirect(url_for("dashboard"))
+            return redirect(url_for("problems"))
 
         last_solution = execute_one(g.db,
             "SELECT code FROM solutions WHERE user_id=%s AND task_id=%s ORDER BY created_at DESC LIMIT 1",
-            (user_id, task_id),
+            (user_id, problem_id),
         )
-        code_prefill = last_solution["code"] if last_solution else task["starter_code"]
+        code_prefill = last_solution["code"] if last_solution else (problem["code_python3"] or "")
 
         results: Dict[str, object] | None = None
-        tags = execute_query(g.db,
-            "SELECT tg.name FROM tags tg JOIN task_tags tt ON tt.tag_id = tg.id WHERE tt.task_id = %s ORDER BY tg.name",
-            (task_id,),
-        )
+        
+        # Получаем теги задачи
+        tags = problem["topic_tags"] or []
 
-        # Build sidebar tree for this task's category
+        # Создаем боковое меню для задач той же темы
         sidebar_tree = None
-        if task and task["category_id"] is not None:
+        if problem and problem["topic"]:
             rows = execute_query(g.db,
-                "SELECT id, title, level FROM tasks WHERE category_id=%s ORDER BY level, id",
-                (task["category_id"],),
+                "SELECT problem_id, title, difficulty FROM real_leetcode_problems WHERE topic=%s ORDER BY difficulty, problem_id",
+                (problem["topic"],),
             )
-            groups: Dict[str, List[Dict[str, object]]] = {"easy": [], "medium": [], "hard": [], "other": []}
+            groups: Dict[str, List[Dict[str, object]]] = {"Easy": [], "Medium": [], "Hard": []}
             for r in rows:
-                lvl = (r["level"] or "other").lower()
-                key = lvl if lvl in groups else "other"
-                groups[key].append({"id": r["id"], "title": r["title"], "level": lvl})
+                difficulty = r["difficulty"] or "Easy"
+                if difficulty in groups:
+                    groups[difficulty].append({
+                        "problem_id": r["problem_id"], 
+                        "title": r["title"], 
+                        "difficulty": difficulty
+                    })
             sidebar_tree = {
-                "category": {"id": task["category_id"], "name": task["category_name"]},
+                "topic": {"name": problem["topic"]},
                 "groups": groups,
-                "current_task_id": task_id,
+                "current_problem_id": problem_id,
             }
 
         if request.method == "POST":
@@ -382,16 +512,13 @@ def create_app() -> Flask:
             if not user_code.strip():
                 flash("Код решения не может быть пустым", "error")
                 return render_template(
-                    "task.html", task=task, code_prefill=user_code, results=None, tags=tags
+                    "problem.html", problem=problem, code_prefill=user_code, results=None, tags=tags
                 )
 
-            testcases = execute_query(g.db,
-                "SELECT input_text, expected_output FROM testcases WHERE task_id=%s ORDER BY id",
-                (task_id,),
-            )
-            tests: List[Tuple[str, str]] = [
-                (row["input_text"], row["expected_output"]) for row in testcases
-            ]
+            # Для LeetCode задач пока используем простую проверку
+            # В будущем можно добавить реальные тест-кейсы
+            testcases = [("", "")]  # Заглушка
+            tests: List[Tuple[str, str]] = testcases
 
             judge_report = judge_user_code(user_code, tests, time_limit_sec=2.0)
             passed = int(judge_report["passed"])  # type: ignore[index]
@@ -404,7 +531,7 @@ def create_app() -> Flask:
                 """,
                 (
                     user_id,
-                    task_id,
+                    problem_id,
                     user_code,
                     passed,
                     json.dumps(judge_report, ensure_ascii=False),
@@ -413,21 +540,16 @@ def create_app() -> Flask:
             )
 
             if passed:
-                already_passed = execute_one(g.db,
-                    "SELECT 1 FROM solutions WHERE user_id=%s AND task_id=%s AND passed=1 LIMIT 1",
-                    (user_id, task_id),
-                )
-                # Текущее решение уже вставлено, проверим было ли до этого
+                # Проверяем, решалась ли задача ранее
                 prev_passed = execute_one(g.db,
                     "SELECT 1 FROM solutions WHERE user_id=%s AND task_id=%s AND passed=1 AND id < (SELECT MAX(id) FROM solutions WHERE user_id=%s AND task_id=%s) LIMIT 1",
-                    (user_id, task_id, user_id, task_id),
+                    (user_id, problem_id, user_id, problem_id),
                 )
                 if not prev_passed:
-                    # начислить очки за первую сдачу
-                    task_row = execute_one(g.db, "SELECT points FROM tasks WHERE id=%s", (task_id,))
-                    task_points = int(task_row["points"]) if task_row and task_row["points"] is not None else 100
-                    cursor.execute("UPDATE users SET points = COALESCE(points,0) + %s WHERE id=%s", (task_points, user_id))
-                    flash(f"Задача зачтена! +{task_points} очков", "success")
+                    # Начисляем очки за первую сдачу
+                    points = 100 if problem["difficulty"] == "Easy" else (200 if problem["difficulty"] == "Medium" else 300)
+                    cursor.execute("UPDATE users SET points = COALESCE(points,0) + %s WHERE id=%s", (points, user_id))
+                    flash(f"Задача решена! +{points} очков", "success")
             
             g.db.commit()
             cursor.close()
@@ -435,8 +557,8 @@ def create_app() -> Flask:
             results = judge_report  # type: ignore[assignment]
 
         return render_template(
-            "task.html",
-            task=task,
+            "problem.html",
+            problem=problem,
             code_prefill=code_prefill,
             results=results,
             tags=tags,
@@ -450,8 +572,8 @@ def create_app() -> Flask:
             return redirect(url_for("login"))
         subs = execute_query(g.db,
             """
-            SELECT s.id, t.title AS task_title, s.passed, s.created_at 
-            FROM solutions s JOIN tasks t ON t.id = s.task_id 
+            SELECT s.id, p.title AS problem_title, s.passed, s.created_at, p.difficulty
+            FROM solutions s JOIN real_leetcode_problems p ON p.problem_id = s.task_id 
             WHERE s.user_id = %s ORDER BY s.created_at DESC, s.id DESC
             """,
             (user_id,),
@@ -466,8 +588,8 @@ def create_app() -> Flask:
         s = execute_one(g.db,
             """
             SELECT s.id, s.user_id, s.task_id, s.code, s.passed, s.result_json, s.created_at, 
-            t.title AS task_title 
-            FROM solutions s JOIN tasks t ON t.id = s.task_id WHERE s.id = %s
+            p.title AS problem_title, p.difficulty
+            FROM solutions s JOIN real_leetcode_problems p ON p.problem_id = s.task_id WHERE s.id = %s
             """,
             (solution_id,),
         )
