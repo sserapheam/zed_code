@@ -762,7 +762,9 @@ def create_app() -> Flask:
                         "execution_time": 0
                     }
         
-        return render_template("sandbox.html", results=results)
+        # Передаем выбранный язык в шаблон
+        selected_language = request.form.get("language", "javascript") if request.method == "POST" else "javascript"
+        return render_template("sandbox.html", results=results, selected_language=selected_language)
 
     return app
 
@@ -925,8 +927,14 @@ def _run_javascript_with_timeout(code: str, time_limit_sec: float) -> Dict[str, 
         env['NODE_OPTIONS'] = '--max-old-space-size=4096'
         
         # Выполняем код через Node.js
+        # Используем полный путь к Node.js для Windows
+        node_path = r'C:\Program Files\nodejs\node.exe'
+        if not os.path.exists(node_path):
+            # Если полный путь не найден, пытаемся использовать node из PATH
+            node_path = 'node'
+        
         result = subprocess.run(
-            ['node', temp_file],
+            [node_path, temp_file],
             capture_output=True,
             text=True,
             timeout=time_limit_sec,
