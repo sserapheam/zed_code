@@ -37,28 +37,30 @@
       <div class="panel">
         <div class="code-editor-header">
           <h2>Ваше решение</h2>
-          <div class="language-selector">
-            <label for="language-select">Язык:</label>
-            <select id="language-select" onchange="switchLanguage()">
+          <div class="editor-controls">
+            <div class="language-selector">
+              <label for="language-select">Язык:</label>
+              <select id="language-select" onchange="switchLanguage()">
               {% if problem['code_python3'] %}
-                <option value="python3" selected>Python 3</option>
+                <option value="python3" {% if not request.args.get('lang') or request.args.get('lang') == 'python3' %}selected{% endif %}>Python 3</option>
               {% endif %}
               {% if problem['code_javascript'] %}
-                <option value="javascript">JavaScript</option>
+                <option value="javascript" {% if request.args.get('lang') == 'javascript' %}selected{% endif %}>JavaScript</option>
               {% endif %}
               {% if problem['code_java'] %}
-                <option value="java">Java</option>
+                <option value="java" {% if request.args.get('lang') == 'java' %}selected{% endif %}>Java</option>
               {% endif %}
               {% if problem['code_c'] %}
-                <option value="c">C</option>
+                <option value="c" {% if request.args.get('lang') == 'c' %}selected{% endif %}>C</option>
               {% endif %}
               {% if problem['code_csharp'] %}
-                <option value="csharp">C#</option>
+                <option value="csharp" {% if request.args.get('lang') == 'csharp' %}selected{% endif %}>C#</option>
               {% endif %}
               {% if problem['code_cpp'] %}
-                <option value="cpp">C++</option>
+                <option value="cpp" {% if request.args.get('lang') == 'cpp' %}selected{% endif %}>C++</option>
               {% endif %}
             </select>
+            </div>
           </div>
         </div>
     
@@ -68,60 +70,72 @@
       
       <!-- Python 3 -->
       {% if problem['code_python3'] %}
-        <div class="code-editor" id="editor-python3" style="display: block;">
+        <div class="code-editor" id="editor-python3" style="display: {% if not request.args.get('lang') or request.args.get('lang') == 'python3' %}block{% else %}none{% endif %};">
           <label>
             Код на Python 3
-            <textarea name="code" rows="16" spellcheck="false" placeholder="# Введите ваше решение здесь...">{{ code_prefill if code_prefill else problem['code_python3'] }}</textarea>
+            <div class="code-editor-container">
+              <textarea id="code-python3" name="code" rows="16" spellcheck="false" placeholder="# Введите ваше решение здесь...">{{ code_prefill if code_prefill else problem['code_python3'] }}</textarea>
+            </div>
           </label>
         </div>
       {% endif %}
       
       <!-- JavaScript -->
       {% if problem['code_javascript'] %}
-        <div class="code-editor" id="editor-javascript" style="display: none;">
+        <div class="code-editor" id="editor-javascript" style="display: {% if request.args.get('lang') == 'javascript' %}block{% else %}none{% endif %};">
           <label>
             Код на JavaScript
-            <textarea name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ problem['code_javascript'] }}</textarea>
+            <div class="code-editor-container">
+              <textarea id="code-javascript" name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ code_prefill if request.args.get('lang') == 'javascript' and code_prefill else problem['code_javascript'] }}</textarea>
+            </div>
           </label>
         </div>
       {% endif %}
       
       <!-- Java -->
       {% if problem['code_java'] %}
-        <div class="code-editor" id="editor-java" style="display: none;">
+        <div class="code-editor" id="editor-java" style="display: {% if request.args.get('lang') == 'java' %}block{% else %}none{% endif %};">
           <label>
             Код на Java
-            <textarea name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ problem['code_java'] }}</textarea>
+            <div class="code-editor-container">
+              <textarea id="code-java" name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ code_prefill if request.args.get('lang') == 'java' and code_prefill else problem['code_java'] }}</textarea>
+            </div>
           </label>
         </div>
       {% endif %}
       
       <!-- C -->
       {% if problem['code_c'] %}
-        <div class="code-editor" id="editor-c" style="display: none;">
+        <div class="code-editor" id="editor-c" style="display: {% if request.args.get('lang') == 'c' %}block{% else %}none{% endif %};">
           <label>
             Код на C
-            <textarea name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ problem['code_c'] }}</textarea>
+            <div class="code-editor-container">
+              <textarea id="code-c" name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ code_prefill if request.args.get('lang') == 'c' and code_prefill else problem['code_c'] }}</textarea>
+            </div>
           </label>
         </div>
       {% endif %}
       
       <!-- C# -->
       {% if problem['code_csharp'] %}
-        <div class="code-editor" id="editor-csharp" style="display: none;">
+        <div class="code-editor" id="editor-csharp" style="display: {% if request.args.get('lang') == 'csharp' %}block{% else %}none{% endif %};">
           <label>
             Код на C#
-            <textarea name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ problem['code_csharp'] }}</textarea>
+            <div class="code-editor-container">
+              <textarea id="code-csharp" name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ code_prefill if request.args.get('lang') == 'csharp' and code_prefill else problem['code_csharp'] }}</textarea>
+            </div>
           </label>
         </div>
       {% endif %}
       
       <!-- C++ -->
       {% if problem['code_cpp'] %}
-        <div class="code-editor" id="editor-cpp" style="display: none;">
+        <div class="code-editor" id="editor-cpp" style="display: {% if request.args.get('lang') == 'cpp' %}block{% else %}none{% endif %};">
           <label>
             Код на C++
-            <textarea name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ problem['code_cpp'] }}</textarea>
+            <div class="code-editor-container">
+              <textarea id="code-cpp" name="code" rows="16" spellcheck="false" placeholder="// Введите ваше решение здесь...">{{ code_prefill if request.args.get('lang') == 'cpp' and code_prefill else problem['code_cpp'] }}</textarea>
+            </div>
           </label>
         </div>
       {% endif %}
@@ -167,6 +181,17 @@
     </div>
   </div>
 
+  <!-- Подключение библиотек для подсветки синтаксиса -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/solarized.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
+
   <script>
     // Таймер решения
     let startTs = Date.now();
@@ -174,8 +199,18 @@
     if (form) {
       form.addEventListener('submit', function(){
         document.getElementById('duration_ms').value = String(Date.now() - startTs);
+        
+        // Обновляем значение textarea из CodeMirror перед отправкой
+        if (currentEditor) {
+          const textarea = currentEditor.getTextArea();
+          textarea.value = currentEditor.getValue();
+        }
       });
     }
+    
+    // Глобальные переменные для редакторов
+    let codeEditors = {};
+    let currentEditor = null;
     
     // Стартовые коды для каждого языка
     const starterCodes = {
@@ -199,6 +234,60 @@
       {% endif %}
     };
     
+    
+    // Инициализация CodeMirror для редактора
+    function initCodeMirror(textareaId, mode) {
+      const textarea = document.getElementById(textareaId);
+      if (!textarea) return null;
+      
+      // Определяем тему на основе темы сайта
+      const siteTheme = localStorage.getItem('theme') || 'light';
+      const editorTheme = siteTheme === 'dark' ? 'monokai' : 'default';
+      
+      const editor = CodeMirror.fromTextArea(textarea, {
+        mode: mode,
+        theme: editorTheme,
+        lineNumbers: true,
+        indentUnit: 4,
+        tabSize: 4,
+        indentWithTabs: false,
+        lineWrapping: true,
+        autoCloseBrackets: true,
+        matchBrackets: true,
+        foldGutter: true,
+        gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+        extraKeys: {
+          "Tab": function(cm) {
+            if (cm.somethingSelected()) {
+              cm.indentSelection("add");
+            } else {
+              cm.replaceSelection("    "); // 4 пробела вместо табуляции
+            }
+          },
+          "Shift-Tab": function(cm) {
+            cm.indentSelection("subtract");
+          }
+        }
+      });
+      
+      return editor;
+    }
+    
+    
+    // Функция обновления темы редактора на основе темы сайта
+    function updateEditorTheme() {
+      const siteTheme = localStorage.getItem('theme') || 'light';
+      const editorTheme = siteTheme === 'dark' ? 'monokai' : 'default';
+      
+      // Обновляем тему для всех активных редакторов
+      Object.values(codeEditors).forEach(editor => {
+        if (editor) {
+          editor.setOption('theme', editorTheme);
+          editor.refresh();
+        }
+      });
+    }
+    
     function switchLanguage() {
       const selectedLang = document.getElementById('language-select').value;
       const selectedLanguageInput = document.getElementById('selected-language');
@@ -214,30 +303,71 @@
         activeEditor.style.display = 'block';
         // Обновить скрытое поле с языком
         selectedLanguageInput.value = selectedLang;
+        
+        // Инициализировать CodeMirror для активного редактора
+        const textareaId = 'code-' + selectedLang;
+        if (!codeEditors[selectedLang]) {
+          let mode = 'python';
+          if (selectedLang === 'javascript') mode = 'javascript';
+          else if (selectedLang === 'java' || selectedLang === 'c' || selectedLang === 'csharp' || selectedLang === 'cpp') mode = 'text/x-java';
+          
+          codeEditors[selectedLang] = initCodeMirror(textareaId, mode);
+          currentEditor = codeEditors[selectedLang];
+          
+          // Применяем тему редактора на основе темы сайта
+          if (codeEditors[selectedLang]) {
+            const siteTheme = localStorage.getItem('theme') || 'light';
+            const editorTheme = siteTheme === 'dark' ? 'monokai' : 'default';
+            codeEditors[selectedLang].setOption('theme', editorTheme);
+            codeEditors[selectedLang].refresh();
+          }
+          
+          // Загрузить стартовый код для выбранного языка
+          if (starterCodes[selectedLang] && codeEditors[selectedLang]) {
+            codeEditors[selectedLang].setValue(starterCodes[selectedLang]);
+          }
+        } else {
+          currentEditor = codeEditors[selectedLang];
+        }
       }
     }
     
     function clearCode() {
-      const activeEditor = document.querySelector('.code-editor[style*="block"]');
-      if (activeEditor) {
-        const textarea = activeEditor.querySelector('textarea[name="code"]');
-        if (textarea) {
-          textarea.value = '';
-          textarea.focus();
-        }
+      if (currentEditor) {
+        currentEditor.setValue('');
+        currentEditor.focus();
       }
     }
     
     function resetToStarter() {
       const selectedLang = document.getElementById('language-select').value;
-      const activeEditor = document.querySelector('.code-editor[style*="block"]');
-      if (activeEditor && starterCodes[selectedLang]) {
-        const textarea = activeEditor.querySelector('textarea[name="code"]');
-        if (textarea) {
-          textarea.value = starterCodes[selectedLang];
-          textarea.focus();
-        }
+      if (currentEditor && starterCodes[selectedLang]) {
+        currentEditor.setValue(starterCodes[selectedLang]);
+        currentEditor.focus();
       }
     }
+    
+    // Инициализация при загрузке страницы
+    document.addEventListener('DOMContentLoaded', function() {
+      // Инициализируем CodeMirror для активного языка
+      const selectedLang = document.getElementById('language-select').value;
+      const textareaId = 'code-' + selectedLang;
+      
+      let mode = 'python';
+      if (selectedLang === 'javascript') mode = 'javascript';
+      else if (selectedLang === 'java' || selectedLang === 'c' || selectedLang === 'csharp' || selectedLang === 'cpp') mode = 'text/x-java';
+      
+      codeEditors[selectedLang] = initCodeMirror(textareaId, mode);
+      currentEditor = codeEditors[selectedLang];
+      
+      // Устанавливаем правильный стартовый код для активного языка
+      if (starterCodes[selectedLang] && codeEditors[selectedLang]) {
+        const currentValue = codeEditors[selectedLang].getValue();
+        if (!currentValue.trim()) {
+          codeEditors[selectedLang].setValue(starterCodes[selectedLang]);
+        }
+      }
+      
+    });
   </script>
 {% endblock %}

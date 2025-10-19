@@ -338,7 +338,7 @@ def create_app() -> Flask:
         problems = []
         
         if selected_topic:
-            # Получаем задачи для выбранной темы
+            # Получаем задачи для выбранной темы (только первые 50)
             sql = """
                 SELECT problem_id, title, difficulty, topic_tags,
                 (SELECT s.passed FROM solutions s WHERE s.task_id = problem_id AND s.user_id = %s 
@@ -352,10 +352,10 @@ def create_app() -> Flask:
                 sql += " AND difficulty = %s"
                 params.append(difficulty_filter)
                 
-            sql += " ORDER BY problem_id"
+            sql += " ORDER BY problem_id LIMIT 50"
             problems = execute_query(g.db, sql, params)
         
-        # Если не выбрана конкретная тема, получаем все задачи
+        # Если не выбрана конкретная тема, получаем только первые 50 задач
         all_problems = []
         if not selected_topic:
             all_problems = execute_query(g.db,
@@ -365,6 +365,7 @@ def create_app() -> Flask:
                  ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS last_passed 
                 FROM real_leetcode_problems 
                 ORDER BY problem_id
+                LIMIT 50
                 """,
                 (user_id,)
             )
@@ -375,6 +376,89 @@ def create_app() -> Flask:
                              difficulty_filter=difficulty_filter,
                              problems=problems,
                              all_problems=all_problems)
+
+    @app.route("/api/problems")
+    def api_problems():
+        """API для получения задач с пагинацией"""
+        user_id = session.get("user_id")
+        if not user_id:
+            return jsonify({"error": "unauthorized"}), 401
+        
+        # Получаем параметры пагинации
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 50))
+        topic = request.args.get('topic', '')
+        difficulty = request.args.get('difficulty', '')
+        
+        # Вычисляем offset
+        offset = (page - 1) * per_page
+        
+        # Строим SQL запрос
+        sql = """
+            SELECT problem_id, title, difficulty, topic_tags,
+            (SELECT s.passed FROM solutions s WHERE s.task_id = problem_id AND s.user_id = %s 
+             ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS last_passed 
+            FROM real_leetcode_problems 
+            WHERE 1=1
+        """
+        params = [user_id]
+        
+        # Добавляем фильтры
+        if topic:
+            sql += " AND topic = %s"
+            params.append(topic)
+        
+        if difficulty in {"Easy", "Medium", "Hard"}:
+            sql += " AND difficulty = %s"
+            params.append(difficulty)
+        
+        # Добавляем сортировку и пагинацию
+        sql += " ORDER BY problem_id LIMIT %s OFFSET %s"
+        params.extend([per_page, offset])
+        
+        # Получаем задачи
+        problems = execute_query(g.db, sql, params)
+        
+        # Получаем общее количество задач для пагинации
+        count_sql = """
+            SELECT COUNT(*) as total 
+            FROM real_leetcode_problems 
+            WHERE 1=1
+        """
+        count_params = []
+        
+        if topic:
+            count_sql += " AND topic = %s"
+            count_params.append(topic)
+        
+        if difficulty in {"Easy", "Medium", "Hard"}:
+            count_sql += " AND difficulty = %s"
+            count_params.append(difficulty)
+        
+        total_count = execute_query(g.db, count_sql, count_params)[0]['total']
+        
+        # Форматируем результат
+        formatted_problems = []
+        for p in problems:
+            formatted_problems.append({
+                "problem_id": p["problem_id"],
+                "title": p["title"],
+                "difficulty": p["difficulty"] or "Easy",
+                "topic_tags": p["topic_tags"] or [],
+                "last_passed": p["last_passed"]
+            })
+        
+        return jsonify({
+            "problems": formatted_problems,
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total": total_count,
+                "total_pages": (total_count + per_page - 1) // per_page,
+                "has_next": page * per_page < total_count,
+                "has_prev": page > 1
+            }
+        })
 
     @app.route("/api/topics/<topic>/problems")
     def api_topic_problems(topic: str):
@@ -473,11 +557,34 @@ def create_app() -> Flask:
             flash("Задача не найдена", "error")
             return redirect(url_for("problems"))
 
+        # Получаем последнее решение пользователя
         last_solution = execute_one(g.db,
             "SELECT code FROM solutions WHERE user_id=%s AND task_id=%s ORDER BY created_at DESC LIMIT 1",
             (user_id, problem_id),
         )
-        code_prefill = last_solution["code"] if last_solution else (problem["code_python3"] or "")
+        
+        # Определяем стартовый код в зависимости от языка
+        selected_language = request.args.get('lang', session.get('selected_language', 'python3'))
+        session['selected_language'] = selected_language
+        starter_code = ""
+        
+        if selected_language == 'python3' and problem.get('code_python3'):
+            starter_code = problem['code_python3']
+        elif selected_language == 'javascript' and problem.get('code_javascript'):
+            starter_code = problem['code_javascript']
+        elif selected_language == 'java' and problem.get('code_java'):
+            starter_code = problem['code_java']
+        elif selected_language == 'c' and problem.get('code_c'):
+            starter_code = problem['code_c']
+        elif selected_language == 'csharp' and problem.get('code_csharp'):
+            starter_code = problem['code_csharp']
+        elif selected_language == 'cpp' and problem.get('code_cpp'):
+            starter_code = problem['code_cpp']
+        else:
+            # Fallback на Python3 если выбранный язык недоступен
+            starter_code = problem.get('code_python3', '')
+        
+        code_prefill = last_solution["code"] if last_solution else starter_code
 
         results: Dict[str, object] | None = None
         
@@ -604,6 +711,54 @@ def create_app() -> Flask:
         except Exception:  # noqa: BLE001
             result = None
         return render_template("submission_detail.html", submission=s, result=result)
+
+    @app.route("/sandbox", methods=["GET", "POST"])
+    def sandbox():
+        user_id = session.get("user_id")
+        if not user_id:
+            return redirect(url_for("login"))
+        
+        results = None
+        
+        if request.method == "POST":
+            code = request.form.get("code", "")
+            language = request.form.get("language", "python3")
+            
+            if code.strip():
+                try:
+                    # Выполняем код в зависимости от языка
+                    if language == "python3":
+                        result = _run_with_timeout(code, "", 5.0)
+                    elif language == "javascript":
+                        # Для JavaScript используем Node.js
+                        result = _run_javascript_with_timeout(code, 5.0)
+                    elif language in ["java", "c", "csharp", "cpp"]:
+                        # Для компилируемых языков используем соответствующие компиляторы
+                        result = _run_compiled_with_timeout(code, language, 5.0)
+                    else:
+                        result = {"ok": False, "error": "Неподдерживаемый язык программирования"}
+                    
+                    # Отладочная информация
+                    print(f"DEBUG: Language: {language}")
+                    print(f"DEBUG: Code: {code[:100]}...")
+                    print(f"DEBUG: Result: {result}")
+                    
+                    results = {
+                        "success": result.get("ok", False),
+                        "output": result.get("output", ""),
+                        "error": result.get("error", ""),
+                        "execution_time": result.get("execution_time", 0)
+                    }
+                except Exception as e:
+                    print(f"DEBUG: Exception: {str(e)}")
+                    results = {
+                        "success": False,
+                        "output": "",
+                        "error": f"Ошибка выполнения: {str(e)}",
+                        "execution_time": 0
+                    }
+        
+        return render_template("sandbox.html", results=results)
 
     return app
 
@@ -747,19 +902,207 @@ def _target_exec(code: str, input_text: str, q: Queue) -> None:
             pass
 
 
-def _run_with_timeout(code: str, input_text: str, time_limit_sec: float) -> Dict[str, object]:
-    q: Queue = Queue()
-    p = Process(target=_target_exec, args=(code, input_text, q))
-    p.start()
-    p.join(time_limit_sec)
-    if p.is_alive():
-        p.terminate()
-        p.join(0.1)
-        return {"timeout": True}
+def _run_javascript_with_timeout(code: str, time_limit_sec: float) -> Dict[str, object]:
+    """Выполнение JavaScript кода с таймаутом"""
+    import subprocess
+    import tempfile
+    import time
+    
     try:
-        return q.get_nowait()
-    except Exception:  # noqa: BLE001
-        return {"ok": False, "error": "Не удалось получить результат"}
+        # Создаем временный файл для JavaScript кода с кодировкой UTF-8
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False, encoding='utf-8') as f:
+            f.write(code)
+            temp_file = f.name
+        
+        start_time = time.time()
+        
+        # Выполняем код через Node.js с правильной кодировкой
+        env = os.environ.copy()
+        env['NODE_OPTIONS'] = '--max-old-space-size=4096'
+        
+        result = subprocess.run(
+            ['node', temp_file],
+            capture_output=True,
+            text=True,
+            timeout=time_limit_sec,
+            encoding='utf-8',
+            errors='replace',
+            env=env
+        )
+        
+        execution_time = int((time.time() - start_time) * 1000)
+        
+        # Удаляем временный файл
+        os.unlink(temp_file)
+        
+        return {
+            "ok": result.returncode == 0,
+            "output": result.stdout,
+            "error": result.stderr if result.returncode != 0 else "",
+            "execution_time": execution_time
+        }
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "Превышено время выполнения", "execution_time": int(time_limit_sec * 1000)}
+    except Exception as e:
+        return {"ok": False, "error": f"Ошибка выполнения: {str(e)}", "execution_time": 0}
+
+def _run_compiled_with_timeout(code: str, language: str, time_limit_sec: float) -> Dict[str, object]:
+    """Выполнение кода компилируемых языков с таймаутом"""
+    import subprocess
+    import tempfile
+    import time
+    
+    try:
+        # Определяем расширение файла и команды компиляции/выполнения
+        if language == "java":
+            ext = ".java"
+            compile_cmd = ["javac"]
+            run_cmd = ["java", "Main"]
+        elif language == "c":
+            ext = ".c"
+            compile_cmd = ["gcc", "-o"]
+            run_cmd = ["./main"]
+        elif language == "cpp":
+            ext = ".cpp"
+            compile_cmd = ["g++", "-o"]
+            run_cmd = ["./main"]
+        elif language == "csharp":
+            ext = ".cs"
+            compile_cmd = ["mcs"]
+            run_cmd = ["mono", "main.exe"]
+        else:
+            return {"ok": False, "error": "Неподдерживаемый язык программирования"}
+        
+        # Создаем временные файлы с кодировкой UTF-8
+        with tempfile.NamedTemporaryFile(mode='w', suffix=ext, delete=False, encoding='utf-8') as f:
+            f.write(code)
+            source_file = f.name
+        
+        if language == "java":
+            # Для Java создаем файл Main.java
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.java', delete=False, encoding='utf-8') as f:
+                f.write(code)
+                java_file = f.name
+            source_file = java_file
+        
+        start_time = time.time()
+        
+        # Компилируем код с правильной кодировкой
+        env = os.environ.copy()
+        env['LANG'] = 'en_US.UTF-8'
+        env['LC_ALL'] = 'en_US.UTF-8'
+        
+        if language == "java":
+            compile_result = subprocess.run(
+                ["javac", java_file],
+                capture_output=True,
+                text=True,
+                timeout=time_limit_sec,
+                encoding='utf-8',
+                errors='replace',
+                env=env
+            )
+        else:
+            compile_result = subprocess.run(
+                compile_cmd + ["main", source_file],
+                capture_output=True,
+                text=True,
+                timeout=time_limit_sec,
+                encoding='utf-8',
+                errors='replace',
+                env=env
+            )
+        
+        if compile_result.returncode != 0:
+            return {
+                "ok": False,
+                "error": f"Ошибка компиляции: {compile_result.stderr}",
+                "execution_time": int((time.time() - start_time) * 1000)
+            }
+        
+        # Выполняем скомпилированный код с правильной кодировкой
+        run_result = subprocess.run(
+            run_cmd,
+            capture_output=True,
+            text=True,
+            timeout=time_limit_sec,
+            cwd=os.path.dirname(source_file) if language == "java" else None,
+            encoding='utf-8',
+            errors='replace',
+            env=env
+        )
+        
+        execution_time = int((time.time() - start_time) * 1000)
+        
+        # Удаляем временные файлы
+        os.unlink(source_file)
+        if language == "java":
+            os.unlink(java_file)
+            # Удаляем .class файлы
+            for file in os.listdir(os.path.dirname(java_file)):
+                if file.endswith('.class'):
+                    os.unlink(os.path.join(os.path.dirname(java_file), file))
+        else:
+            if os.path.exists("main"):
+                os.unlink("main")
+            if os.path.exists("main.exe"):
+                os.unlink("main.exe")
+        
+        return {
+            "ok": run_result.returncode == 0,
+            "output": run_result.stdout,
+            "error": run_result.stderr if run_result.returncode != 0 else "",
+            "execution_time": execution_time
+        }
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "Превышено время выполнения", "execution_time": int(time_limit_sec * 1000)}
+    except Exception as e:
+        return {"ok": False, "error": f"Ошибка выполнения: {str(e)}", "execution_time": 0}
+
+def _run_with_timeout(code: str, input_text: str, time_limit_sec: float) -> Dict[str, object]:
+    """Выполнение Python кода с таймаутом"""
+    import subprocess
+    import tempfile
+    import time
+    
+    try:
+        # Создаем временный файл для Python кода с кодировкой UTF-8
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+            f.write(code)
+            temp_file = f.name
+        
+        start_time = time.time()
+        
+        # Выполняем код через Python с правильной кодировкой
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8'
+        env['PYTHONUTF8'] = '1'
+        
+        result = subprocess.run(
+            ['python', '-u', temp_file],
+            capture_output=True,
+            text=True,
+            timeout=time_limit_sec,
+            encoding='utf-8',
+            errors='replace',
+            env=env
+        )
+        
+        execution_time = int((time.time() - start_time) * 1000)
+        
+        # Удаляем временный файл
+        os.unlink(temp_file)
+        
+        return {
+            "ok": result.returncode == 0,
+            "output": result.stdout,
+            "error": result.stderr if result.returncode != 0 else "",
+            "execution_time": execution_time
+        }
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "Превышено время выполнения", "execution_time": int(time_limit_sec * 1000)}
+    except Exception as e:
+        return {"ok": False, "error": f"Ошибка выполнения: {str(e)}", "execution_time": 0}
 
 
 app = create_app()

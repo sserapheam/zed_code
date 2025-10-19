@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}Учебный тренажёр{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    
+    <!-- Предотвращение моргания темы сайта -->
+    <script>
+      (function() {
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        
+        // Применяем тему сразу, до загрузки DOM
+        if (savedTheme === 'dark') {
+          document.documentElement.classList.add('dark-theme');
+          document.body.classList.add('dark-theme');
+        } else {
+          document.documentElement.classList.remove('dark-theme');
+          document.body.classList.remove('dark-theme');
+        }
+      })();
+    </script>
   </head>
   <body class="{% block body_class %}{% endblock %}">
     <nav class="nav">
@@ -14,8 +30,12 @@
         <form class="search" method="get" action="{{ url_for('search') }}">
           <input type="text" name="q" placeholder="Поиск задач..." value="{{ request.args.get('q','') }}" />
         </form>
+        <button class="btn secondary theme-toggle" onclick="toggleTheme()" title="Переключить тему">
+          <span id="theme-icon">🌙</span>
+        </button>
         {% if session.get('user_id') %}
           <a class="btn secondary" href="{{ url_for('problems') }}">Задачи</a>
+          <a class="btn secondary" href="{{ url_for('sandbox') }}">Песочница</a>
           <a class="btn secondary" href="{{ url_for('leaderboard') }}">Лидерборд</a>
           <a class="btn secondary" href="{{ url_for('submissions') }}">Отправки</a>
           <a class="btn secondary" href="{{ url_for('profile') }}">Профиль ({{ session.get('username') }})</a>
@@ -79,6 +99,91 @@
           header.parentElement.classList.add('expanded');
         }
       }
+      
+      // Глобальная функция переключения темы
+      function toggleTheme() {
+        const html = document.documentElement;
+        const body = document.body;
+        const themeIcon = document.getElementById('theme-icon');
+        
+        // Определяем текущую тему
+        const isDark = body.classList.contains('dark-theme');
+        
+        if (isDark) {
+          // Переключаем на светлую тему
+          html.classList.remove('dark-theme');
+          body.classList.remove('dark-theme');
+          themeIcon.textContent = '🌙';
+          localStorage.setItem('theme', 'light');
+        } else {
+          // Переключаем на темную тему
+          html.classList.add('dark-theme');
+          body.classList.add('dark-theme');
+          themeIcon.textContent = '☀️';
+          localStorage.setItem('theme', 'dark');
+        }
+        
+        // Обновляем тему редакторов кода если они существуют
+        updateAllEditorThemes();
+      }
+      
+      // Функция обновления темы всех редакторов
+      function updateAllEditorThemes() {
+        const isDark = document.body.classList.contains('dark-theme');
+        const editorTheme = isDark ? 'monokai' : 'default';
+        
+        // Обновляем CodeMirror редакторы
+        if (typeof codeEditors !== 'undefined' && codeEditors) {
+          Object.values(codeEditors).forEach(editor => {
+            if (editor && editor.setOption) {
+              editor.setOption('theme', editorTheme);
+              editor.refresh();
+            }
+          });
+        }
+        
+        // Обновляем текущий редактор
+        if (typeof currentEditor !== 'undefined' && currentEditor && currentEditor.setOption) {
+          currentEditor.setOption('theme', editorTheme);
+          currentEditor.refresh();
+        }
+        
+        // Обновляем глобальный редактор если существует
+        if (typeof codeEditor !== 'undefined' && codeEditor && codeEditor.setOption) {
+          codeEditor.setOption('theme', editorTheme);
+          codeEditor.refresh();
+        }
+        
+        // Вызываем специфичные функции обновления если они существуют
+        if (typeof updateEditorTheme === 'function') {
+          updateEditorTheme();
+        }
+      }
+      
+      // Инициализация темы при загрузке страницы
+      document.addEventListener('DOMContentLoaded', function() {
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        const html = document.documentElement;
+        const body = document.body;
+        const themeIcon = document.getElementById('theme-icon');
+        
+        // Применяем сохраненную тему
+        if (savedTheme === 'dark') {
+          html.classList.add('dark-theme');
+          body.classList.add('dark-theme');
+          themeIcon.textContent = '☀️';
+        } else {
+          html.classList.remove('dark-theme');
+          body.classList.remove('dark-theme');
+          themeIcon.textContent = '🌙';
+        }
+        
+        // Обновляем темы редакторов после загрузки
+        setTimeout(() => {
+          updateAllEditorThemes();
+          body.classList.add('loaded');
+        }, 100);
+      });
     </script>
   </body>
   </html>

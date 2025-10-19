@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}{% if selected_topic %}{{ selected_topic }}{% else %}Задачи{% endif %}{% endblock %}
 {% block content %}
+  <div class="problems-page">
   {% if selected_topic %}
     <!-- Страница конкретной темы -->
     <div class="problems-header">
@@ -24,7 +25,7 @@
       </div>
     </div>
       
-    <div class="problems-list">
+    <div class="problems-list" id="problems-list">
       {% for p in problems %}
         <div class="problem-item">
           <div class="problem-content">
@@ -50,6 +51,22 @@
         </div>
       {% endfor %}
     </div>
+    
+    <!-- Индикатор загрузки для тем -->
+    <div id="loading-indicator" class="loading-indicator" style="display: none;">
+      <div class="loading-spinner"></div>
+      <span>Загрузка задач...</span>
+    </div>
+    
+    <!-- Кнопка "Показать еще" для тем -->
+    <div id="load-more-container" class="load-more-container">
+      <button id="load-more-btn" class="btn primary">Показать еще</button>
+    </div>
+    
+    <!-- Кнопка "Наверх" для тем -->
+    <button id="back-to-top" class="back-to-top" style="display: none;">
+      <span>↑</span>
+    </button>
   {% else %}
     <!-- Главная страница со списком тем и задач -->
     <div class="problems-header">
@@ -76,7 +93,7 @@
     </div>
 
     <!-- Список всех задач -->
-    <div class="problems-list">
+    <div class="problems-list" id="problems-list">
       {% for p in all_problems %}
         <div class="problem-item">
           <div class="problem-content">
@@ -109,5 +126,183 @@
         </div>
       {% endfor %}
     </div>
+    
+    <!-- Индикатор загрузки -->
+    <div id="loading-indicator" class="loading-indicator" style="display: none;">
+      <div class="loading-spinner"></div>
+      <span>Загрузка задач...</span>
+    </div>
+    
+    <!-- Кнопка "Показать еще" -->
+    <div id="load-more-container" class="load-more-container">
+      <button id="load-more-btn" class="btn primary">Показать еще</button>
+    </div>
+    
+    <!-- Кнопка "Наверх" -->
+    <button id="back-to-top" class="back-to-top" style="display: none;">
+      <span>↑</span>
+    </button>
   {% endif %}
+  </div>
+
+<script>
+// Переменные для пагинации
+let currentPage = 1;
+let isLoading = false;
+let hasMoreProblems = true;
+let currentTopic = '';
+let currentDifficulty = '';
+
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    // Получаем текущие фильтры из URL
+    const urlParams = new URLSearchParams(window.location.search);
+    currentTopic = urlParams.get('topic') || '';
+    currentDifficulty = urlParams.get('difficulty') || '';
+    
+    // Добавляем обработчик для кнопки "Показать еще"
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', loadMoreProblems);
+    }
+    
+    // Добавляем обработчик для кнопки "Наверх"
+    const backToTopBtn = document.getElementById('back-to-top');
+    if (backToTopBtn) {
+        backToTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
+    
+    // Отслеживаем прокрутку для показа кнопки "Наверх"
+    window.addEventListener('scroll', handleScroll);
+});
+
+// Обработка прокрутки для показа кнопки "Наверх"
+function handleScroll() {
+    const backToTopBtn = document.getElementById('back-to-top');
+    if (!backToTopBtn) return;
+    
+    // Показываем кнопку если прокрутили больше чем на 50 задач (примерно 3000px)
+    const scrollThreshold = 3000;
+    if (window.scrollY > scrollThreshold) {
+        backToTopBtn.style.display = 'block';
+    } else {
+        backToTopBtn.style.display = 'none';
+    }
+}
+
+// Загрузка дополнительных задач
+async function loadMoreProblems() {
+    if (isLoading || !hasMoreProblems) return;
+    
+    isLoading = true;
+    showLoadingIndicator();
+    
+    try {
+        currentPage++;
+        const response = await fetch(`/api/problems?page=${currentPage}&per_page=50&topic=${currentTopic}&difficulty=${currentDifficulty}`);
+        const data = await response.json();
+        
+        if (data.problems && data.problems.length > 0) {
+            // Добавляем новые задачи в список
+            const problemsList = document.getElementById('problems-list');
+            if (problemsList) {
+                data.problems.forEach(problem => {
+                    const problemElement = createProblemElement(problem);
+                    problemsList.appendChild(problemElement);
+                });
+            }
+            
+            // Проверяем, есть ли еще задачи
+            hasMoreProblems = data.pagination.has_next;
+            
+            if (!hasMoreProblems) {
+                hideLoadMoreButton();
+            }
+        } else {
+            hasMoreProblems = false;
+            hideLoadMoreButton();
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки задач:', error);
+        currentPage--; // Откатываем номер страницы при ошибке
+    } finally {
+        isLoading = false;
+        hideLoadingIndicator();
+    }
+}
+
+// Создание элемента задачи
+function createProblemElement(problem) {
+    const div = document.createElement('div');
+    div.className = 'problem-item';
+    
+    const statusHtml = problem.last_passed !== null 
+        ? `<span class="status ${problem.last_passed ? 'solved' : 'attempted'}">
+             ${problem.last_passed ? '✓ Решено' : '✗ Попытка'}
+           </span>`
+        : '';
+    
+    const tagsHtml = problem.topic_tags && problem.topic_tags.length > 0
+        ? `<div class="problem-tags">
+             ${problem.topic_tags.slice(0, 2).map(tag => `<span class="tag">${tag}</span>`).join('')}
+           </div>`
+        : '';
+    
+    div.innerHTML = `
+        <div class="problem-content">
+            <div class="problem-title">
+                <a href="/problem/${problem.problem_id}" class="title-link">
+                    ${problem.problem_id}. ${problem.title}
+                </a>
+            </div>
+            <div class="problem-meta">
+                <span class="difficulty ${problem.difficulty}">${problem.difficulty}</span>
+                ${tagsHtml}
+                ${statusHtml}
+            </div>
+        </div>
+        <div class="problem-actions">
+            <a href="/problem/${problem.problem_id}" class="btn-solve">
+                ${problem.last_passed ? 'Повторить' : 'Решить'}
+            </a>
+        </div>
+    `;
+    
+    return div;
+}
+
+// Показать индикатор загрузки
+function showLoadingIndicator() {
+    const indicator = document.getElementById('loading-indicator');
+    if (indicator) {
+        indicator.style.display = 'flex';
+    }
+}
+
+// Скрыть индикатор загрузки
+function hideLoadingIndicator() {
+    const indicator = document.getElementById('loading-indicator');
+    if (indicator) {
+        indicator.style.display = 'none';
+    }
+}
+
+// Показать кнопку "Загрузить еще"
+function showLoadMoreButton() {
+    const container = document.getElementById('load-more-container');
+    if (container) {
+        container.style.display = 'block';
+    }
+}
+
+// Скрыть кнопку "Загрузить еще"
+function hideLoadMoreButton() {
+    const container = document.getElementById('load-more-container');
+    if (container) {
+        container.style.display = 'none';
+    }
+}
+</script>
 {% endblock %}
