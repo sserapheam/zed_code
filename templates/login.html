@@ -1,7 +1,8 @@
 {% extends 'base.html' %}
 {% block title %}Вход{% endblock %}
 {% block content %}
-  <div class="panel" style="max-width: 400px; margin: 0 auto;">
+  <div class="login-page">
+    <div class="panel" style="max-width: 400px; margin: 0 auto;">
     <div style="text-align: center; margin-bottom: 2rem;">
       <h1 style="margin-bottom: 0.5rem;">Добро пожаловать!</h1>
       <p class="muted">Войдите в свой аккаунт</p>
@@ -24,6 +25,7 @@
     <div style="text-align: center; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
       <p class="muted">Нет аккаунта?</p>
       <a href="{{ url_for('register') }}" class="btn secondary" style="width: 100%; justify-content: center;">Создать аккаунт</a>
+    </div>
     </div>
   </div>
 {% endblock %}

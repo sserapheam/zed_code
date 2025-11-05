@@ -5,12 +5,13 @@
   
   <form method="get" class="search-form">
     <input type="text" name="q" value="{{ q }}" placeholder="Название или описание задачи..." />
-    <select name="level">
+    <select name="difficulty">
       <option value="">Все уровни</option>
-      <option value="easy" {% if request.args.get('level')=='easy' %}selected{% endif %}>Easy</option>
-      <option value="medium" {% if request.args.get('level')=='medium' %}selected{% endif %}>Medium</option>
-      <option value="hard" {% if request.args.get('level')=='hard' %}selected{% endif %}>Hard</option>
+      <option value="Easy" {% if difficulty=='Easy' %}selected{% endif %}>Easy</option>
+      <option value="Medium" {% if difficulty=='Medium' %}selected{% endif %}>Medium</option>
+      <option value="Hard" {% if difficulty=='Hard' %}selected{% endif %}>Hard</option>
     </select>
+    <input type="text" name="topic" value="{{ topic }}" placeholder="Тема (например: Array, String)" />
     <button class="btn" type="submit">Искать</button>
   </form>
 
@@ -18,13 +19,19 @@
     <div class="panel">
       <h2>Результаты поиска ({{ results|length }})</h2>
       <div class="cards tasks">
-        {% for t in results %}
-          <a class="task-card {{ t['level'] or 'easy' }}" href="{{ url_for('task_detail', task_id=t['id']) }}">
+        {% for p in results %}
+          <a class="task-card {{ p['difficulty'] or 'Easy' }}" href="{{ url_for('problem', problem_id=p['problem_id']) }}">
             <div class="task-card-top">
-              <span class="badge {{ t['level'] or 'easy' }}">{{ (t['level'] or 'easy')|capitalize }}</span>
-              <span class="muted">{{ t['points'] }} баллов</span>
+              <span class="badge {{ p['difficulty'] or 'Easy' }}">{{ p['difficulty'] or 'Easy' }}</span>
             </div>
-            <div class="task-card-title">{{ t['title'] }}</div>
+            <div class="task-card-title">{{ p['title'] }}</div>
+            {% if p['topic_tags'] %}
+              <div class="task-tags">
+                {% for tag in p['topic_tags'][:3] %}
+                  <span class="chip small">{{ tag }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
           </a>
         {% endfor %}
       </div>
@@ -33,7 +40,7 @@
     <div class="panel" style="text-align: center; padding: 3rem;">
       <h2>Ничего не найдено</h2>
       <p class="muted">Попробуйте изменить поисковый запрос или выбрать другой уровень сложности.</p>
-      <a href="{{ url_for('categories') }}" class="btn secondary">Посмотреть все задачи</a>
+      <a href="{{ url_for('problems') }}" class="btn secondary">Посмотреть все задачи</a>
     </div>
   {% else %}
     <div class="panel" style="text-align: center; padding: 3rem;">

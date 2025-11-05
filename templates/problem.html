@@ -1,0 +1,928 @@
+{% extends 'base.html' %}
+{% block title %}{{ problem['title'] }}{% endblock %}
+{% block body_class %}problem-page{% if results %}{% if results.get('passed') %} solution-success{% else %} solution-failed{% endif %}{% endif %}{% endblock %}
+{% block content %}
+  <a href="{{ url_for('problems') }}" class="back">← Назад к задачам</a>
+  
+  <div class="problem-layout">
+    <!-- Левая колонка - описание задачи -->
+    <div class="problem-description">
+      <div class="panel">
+        <div class="problem-header">
+          <h1>{{ problem['title'] }}</h1>
+          {% if problem['difficulty'] %}
+            <span class="badge {{ problem['difficulty'] }}">{{ problem['difficulty'] }}</span>
+          {% endif %}
+        </div>
+        
+        <div class="problem-content">
+          <div class="description-text">{{ problem['description']|clean_html|safe }}</div>
+          
+          {% if problem['examples'] %}
+            <div class="examples-section" style="margin-top: 1.5rem;">
+              <h4 style="margin-bottom: 0.75rem; font-size: 1rem;">Примеры:</h4>
+              {% for example in problem['examples'] %}
+                <div class="example-item" style="margin-bottom: 0.75rem; padding: 0.75rem; background: #f8f9fa; border-left: 3px solid #3b82f6; border-radius: 4px;">
+                  {% if example.get('input') %}
+                    <div class="example-row" style="margin-bottom: 0.4rem; display: flex; align-items: flex-start; gap: 0.5rem;">
+                      <strong class="example-label" style="min-width: 100px; font-size: 0.85em; color: #64748b;">Вход:</strong>
+                      <code class="example-code" style="flex: 1; padding: 0.35rem 0.6rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 0.9em; display: inline-block;">{{ example['input'] }}</code>
+                    </div>
+                  {% endif %}
+                  {% if example.get('output') %}
+                    <div class="example-row" style="margin-bottom: 0.4rem; display: flex; align-items: flex-start; gap: 0.5rem;">
+                      <strong class="example-label" style="min-width: 100px; font-size: 0.85em; color: #64748b;">Выход:</strong>
+                      <code class="example-code" style="flex: 1; padding: 0.35rem 0.6rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 0.9em; display: inline-block;">{{ example['output'] }}</code>
+                    </div>
+                  {% endif %}
+                  {% if example.get('explanation') %}
+                    <div class="example-explanation" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0; font-size: 0.85em; color: #64748b; font-style: italic; line-height: 1.4;">
+                      <strong>Объяснение:</strong> {{ example['explanation'] }}
+                    </div>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          
+          {% if problem['constraints'] %}
+            <div class="constraints-section" style="margin-top: 1.5rem;">
+              <h4 style="margin-bottom: 0.75rem; font-size: 1rem;">Ограничения:</h4>
+              <div class="constraints-text" style="white-space: pre-line; padding: 0.75rem; background: #f8f9fa; border-left: 3px solid #f59e0b; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6; color: #475569;">{{ problem['constraints'] }}</div>
+            </div>
+          {% endif %}
+          
+          {% if tags %}
+            <div class="tags-section" style="margin-top: 1.5rem;">
+              <h4>Теги:</h4>
+              <div class="tags-list">
+                {% for tag in tags %}
+                  <span class="chip">{{ tag }}</span>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+          
+          {% set hints_list = problem.get('hints') or [] %}
+          <!-- DEBUG: hints_list = {{ hints_list }}, length = {{ hints_list|length }} -->
+          {% if user_id and hints_list and hints_list|length > 0 %}
+            <div class="hints-section" style="margin-top: 1.5rem;">
+              <h4 style="margin-bottom: 0.75rem; font-size: 1rem;">Подсказки:</h4>
+              <div class="hints-list" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                {% for hint in hints_list %}
+                  {% set hint_str = hint|string if hint else '' %}
+                  {% if hint_str|trim %}
+                    <div class="hint-item" style="border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-secondary);">
+                      <button type="button" class="hint-toggle" style="width: 100%; padding: 0.75rem; background: none; border: none; text-align: left; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: var(--text); font-weight: 500; transition: background 0.2s ease;">
+                        <span>💡 Подсказка {{ loop.index }}</span>
+                        <span class="hint-icon" style="transition: transform 0.3s ease; font-size: 0.8em;">▼</span>
+                      </button>
+                      <div class="hint-content" style="display: none; padding: 0 0.75rem 0.75rem 0.75rem; color: var(--text); line-height: 1.6; border-top: 1px solid var(--border);">
+                        <div style="padding-top: 0.75rem;">{{ hint_str|safe }}</div>
+                      </div>
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Секция комментариев -->
+      <div class="comments-section" style="margin-top: 2rem;">
+        <div class="panel">
+          <h3 style="margin-bottom: 1.5rem;">Комментарии ({{ comments|length }})</h3>
+          
+          {% if session.get('user_id') %}
+            <!-- Форма добавления комментария -->
+            <form method="POST" action="{{ url_for('add_comment') }}" class="comment-form" style="margin-bottom: 2rem;">
+              <input type="hidden" name="problem_id" value="{{ problem['problem_id'] }}">
+              <textarea 
+                name="content" 
+                rows="3" 
+                placeholder="Напишите комментарий..." 
+                required
+                style="width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font-family); resize: vertical; background: var(--bg-secondary); color: var(--text);"
+              ></textarea>
+              <button type="submit" class="btn" style="margin-top: 0.75rem;">Отправить комментарий</button>
+            </form>
+          {% else %}
+            <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+              <a href="{{ url_for('login') }}">Войдите</a>, чтобы оставить комментарий
+            </p>
+          {% endif %}
+          
+          <!-- Список комментариев -->
+          <div class="comments-list">
+            {% if comments %}
+              {% for comment in comments %}
+                <div class="comment-item" style="margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm);">
+                  <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                    <!-- Аватар -->
+                    <div style="flex-shrink: 0;">
+                      {% if comment['avatar_path'] %}
+                        <img src="{{ url_for('static', filename=comment['avatar_path']) }}" alt="avatar" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                      {% else %}
+                        <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.9em;">
+                          {{ comment['username'][0]|upper }}
+                        </div>
+                      {% endif %}
+                    </div>
+                    
+                    <!-- Содержимое комментария -->
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                        <strong style="color: var(--text); font-size: 0.95em;">{{ comment['display_name'] or comment['username'] }}</strong>
+                        <span style="color: var(--text-muted); font-size: 0.85em;">
+                          {{ comment['created_at'].strftime('%d.%m.%Y %H:%M') if comment['created_at'] else '' }}
+                          {% if comment.get('updated_at') and comment['updated_at'] != comment['created_at'] %}
+                            (отредактировано)
+                          {% endif %}
+                        </span>
+                        {% if comment['user_id'] == session.get('user_id') %}
+                          <div style="margin-left: auto; display: flex; gap: 0.5rem;">
+                            <button type="button" class="edit-comment-btn" data-comment-id="{{ comment['id'] }}" 
+                                    style="background: none; border: none; color: var(--primary); cursor: pointer; font-size: 0.85em; padding: 0;">
+                              Редактировать
+                            </button>
+                            <form method="POST" action="{{ url_for('delete_comment', comment_id=comment['id']) }}" style="display: inline;">
+                              <button type="submit" onclick="return confirm('Вы уверены, что хотите удалить этот комментарий?');" 
+                                      style="background: none; border: none; color: var(--danger); cursor: pointer; font-size: 0.85em; padding: 0;">
+                                Удалить
+                              </button>
+                            </form>
+                          </div>
+                        {% endif %}
+                      </div>
+                      <div class="comment-content" style="color: var(--text); line-height: 1.6; white-space: pre-wrap; margin-bottom: 0.75rem; word-wrap: break-word;">{{ comment['content'] }}</div>
+                      <div class="comment-edit-form" style="display: none; margin-bottom: 0.75rem;">
+                        <textarea class="edit-comment-textarea" rows="3" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font-family); resize: vertical; background: var(--bg-secondary); color: var(--text);">{{ comment['content'] }}</textarea>
+                        <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                          <button type="button" class="save-comment-btn btn" data-comment-id="{{ comment['id'] }}">Сохранить</button>
+                          <button type="button" class="cancel-edit-btn btn secondary">Отмена</button>
+                        </div>
+                      </div>
+                      
+                      <!-- Реакции -->
+                      <div class="comment-reactions" style="display: flex; align-items: center; gap: 0.5rem;">
+                        <form method="POST" action="{{ url_for('toggle_reaction', comment_id=comment['id']) }}" class="reaction-form" style="display: inline;">
+                          <input type="hidden" name="reaction_type" value="like">
+                          <button type="submit" class="reaction-btn like-btn {% if comment.get('user_reaction') == 'like' %}active{% endif %}" 
+                                  style="background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.35rem 0.6rem; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; font-size: 0.85em; color: var(--text-muted); transition: all 0.2s ease;">
+                            <span>👍</span>
+                            <span class="like-count">{{ comment.get('likes_count', 0) }}</span>
+                          </button>
+                        </form>
+                        <form method="POST" action="{{ url_for('toggle_reaction', comment_id=comment['id']) }}" class="reaction-form" style="display: inline;">
+                          <input type="hidden" name="reaction_type" value="dislike">
+                          <button type="submit" class="reaction-btn dislike-btn {% if comment.get('user_reaction') == 'dislike' %}active{% endif %}" 
+                                  style="background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.35rem 0.6rem; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; font-size: 0.85em; color: var(--text-muted); transition: all 0.2s ease;">
+                            <span>👎</span>
+                            <span class="dislike-count">{{ comment.get('dislikes_count', 0) }}</span>
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            {% else %}
+              <p style="color: var(--text-muted); text-align: center; padding: 2rem;">
+                Пока нет комментариев. Будьте первым!
+              </p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Правая колонка - песочница -->
+    {% if user_id %}
+    <div class="problem-sandbox">
+      <div class="panel">
+        <div class="code-editor-header">
+          <h2>Ваше решение</h2>
+        </div>
+    
+    <form method="post" class="form">
+      <input type="hidden" name="duration_ms" id="duration_ms" />
+      <input type="hidden" name="language" value="python3" />
+      
+      <!-- Python 3 -->
+      <div class="code-editor" id="editor-python3">
+          <label>
+            Код на Python 3
+            <div class="code-editor-container">
+              <textarea id="code-python3" name="code" rows="16" spellcheck="false" placeholder="# Введите ваше решение здесь...">{{ code_prefill if code_prefill else problem['code_python3'] }}</textarea>
+            </div>
+          </label>
+        </div>
+      
+      <div class="actions">
+        <button type="submit" class="btn">Отправить решение</button>
+        <button type="button" class="btn secondary" onclick="clearCode()">Очистить</button>
+        <button type="button" class="btn secondary" onclick="resetToStarter()">Сбросить к стартовому коду</button>
+        </div>
+      </form>
+      
+      {% if results %}
+        <div class="results-section">
+          <h3>Результаты проверки</h3>
+          <div class="results-list">
+            {% if results.get('passed') %}
+              <!-- Все тесты пройдены - красивое отображение -->
+              <div class="success-result" style="padding: 1.25rem; background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border: 2px solid #28a745; border-radius: 10px; color: #155724; position: relative; overflow: hidden; animation: slideInSuccess 0.5s ease-out;">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                  <div style="font-size: 2.2em; animation: checkmarkPop 0.6s ease-out 0.2s both; flex-shrink: 0;">✓</div>
+                  <div style="flex: 1;">
+                    <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.3rem;">Поздравляем! Все тесты пройдены</div>
+                    {% if results.get('total_tests') %}
+                      <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 0.3rem;">
+                        Успешно пройдено {{ results.get('passed_tests', 0) }} из {{ results.get('total_tests', 0) }} тестов
+                      </div>
+                    {% endif %}
+                    {% if results.get('points_awarded') and results.get('points_awarded') > 0 %}
+                      <div style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: rgba(40, 167, 69, 0.2); border-radius: 6px; display: inline-block; font-weight: 600; font-size: 0.95em;">
+                        🎉 Начислено <strong style="color: #155724;">+{{ results.get('points_awarded') }} очков</strong>
+                      </div>
+                    {% endif %}
+                  </div>
+                </div>
+                <div style="position: absolute; top: -50%; right: -50%; width: 200%; height: 200%; background: radial-gradient(circle, rgba(40, 167, 69, 0.1) 0%, transparent 70%); animation: pulse 2s ease-in-out infinite; pointer-events: none;"></div>
+              </div>
+              
+              {% if stats_for_chart %}
+                <!-- Графики сравнения производительности -->
+                <div class="performance-charts" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
+                  <!-- График времени выполнения -->
+                  <div class="performance-chart" style="padding: 1.25rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                      <div>
+                        <div style="font-size: 0.85em; color: #64748b; margin-bottom: 0.25rem;">Время выполнения</div>
+                        <div style="font-size: 1.5em; font-weight: 600; color: #1e293b;">
+                          {{ "%.2f"|format(results.get('execution_time', 0) * 1000) }} ms
+                        </div>
+                      </div>
+                      {% if stats_for_chart.time_percentile is defined and stats_for_chart.others_count > 0 %}
+                        <div style="font-size: 0.9em; color: #10b981; font-weight: 600;">
+                          Быстрее чем {{ stats_for_chart.time_percentile }}%
+                        </div>
+                      {% endif %}
+                    </div>
+                    <div style="position: relative; height: 200px;">
+                      <canvas id="timeChart"></canvas>
+                    </div>
+                  </div>
+                  
+                  <!-- График использования памяти -->
+                  <div class="performance-chart" style="padding: 1.25rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                      <div>
+                        <div style="font-size: 0.85em; color: #64748b; margin-bottom: 0.25rem;">Использование памяти</div>
+                        <div style="font-size: 1.5em; font-weight: 600; color: #1e293b;">
+                          {{ "%.2f"|format(results.get('memory_used', 0)) }} MB
+                        </div>
+                      </div>
+                      {% if stats_for_chart.memory_percentile is defined and stats_for_chart.others_count > 0 %}
+                        <div style="font-size: 0.9em; color: #10b981; font-weight: 600;">
+                          Меньше чем {{ stats_for_chart.memory_percentile }}%
+                        </div>
+                      {% endif %}
+                    </div>
+                    <div style="position: relative; height: 200px;">
+                      <canvas id="memoryChart"></canvas>
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
+              
+              <style>
+                @keyframes slideInSuccess {
+                  from {
+                    opacity: 0;
+                    transform: translateY(-10px);
+                  }
+                  to {
+                    opacity: 1;
+                    transform: translateY(0);
+                  }
+                }
+                
+                @keyframes checkmarkPop {
+                  0% {
+                    transform: scale(0);
+                    opacity: 0;
+                  }
+                  50% {
+                    transform: scale(1.2);
+                  }
+                  100% {
+                    transform: scale(1);
+                    opacity: 1;
+                  }
+                }
+                
+                @keyframes pulse {
+                  0%, 100% {
+                    opacity: 0.3;
+                  }
+                  50% {
+                    opacity: 0.1;
+                  }
+                }
+              </style>
+            {% else %}
+              <!-- Показываем только первый непройденный тест -->
+              {% set failed_test = results['results']|selectattr('status', 'ne', 'OK')|first %}
+              {% if failed_test %}
+                <div class="result-item" style="padding: 1rem; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 8px; color: #721c24;">
+                  <div style="margin-bottom: 0.5rem;">
+                    <span class="result-test" style="font-weight: bold;">Тест {{ failed_test['case'] }}:</span>
+                    {% if failed_test['status'] == 'WA' %}
+                      <span class="bad" style="color: #721c24;">✗ Неверный ответ</span>
+                    {% elif failed_test['status'] == 'TIMEOUT' %}
+                      <span class="bad" style="color: #721c24;">⏱ Превышено время выполнения</span>
+                    {% else %}
+                      <span class="bad" style="color: #721c24;">💥 Ошибка выполнения</span>
+                    {% endif %}
+                  </div>
+                  
+                  {% if failed_test.get('input') %}
+                    <div style="margin-top: 0.5rem; font-size: 0.9em;">
+                      <strong>Входные данные:</strong>
+                      <code class="test-output-code" style="display: block; margin-top: 0.25rem; padding: 0.5rem; background: #fff; border-radius: 4px; font-family: monospace;">{{ failed_test['input'] }}</code>
+                    </div>
+                  {% endif %}
+                  
+                  {% if failed_test.get('expected') is not none %}
+                    <div style="margin-top: 0.5rem; font-size: 0.9em;">
+                      <strong>Ожидалось:</strong>
+                      <code class="test-output-code" style="display: block; margin-top: 0.25rem; padding: 0.5rem; background: #fff; border-radius: 4px; font-family: monospace;">{{ failed_test['expected'] }}</code>
+                    </div>
+                  {% endif %}
+                  
+                  {% if failed_test.get('actual') is not none %}
+                    <div style="margin-top: 0.5rem; font-size: 0.9em;">
+                      <strong>Получено:</strong>
+                      <code class="test-output-code" style="display: block; margin-top: 0.25rem; padding: 0.5rem; background: #fff; border-radius: 4px; font-family: monospace;">{{ failed_test['actual'] }}</code>
+                    </div>
+                  {% endif %}
+                  
+                  {% if failed_test.get('message') %}
+                    <div style="margin-top: 0.5rem; font-size: 0.9em; color: #856404;">
+                      <strong>Сообщение:</strong> {{ failed_test['message'] }}
+                    </div>
+                  {% endif %}
+                  
+                  {% if failed_test.get('traceback') %}
+                    <div style="margin-top: 0.5rem; font-size: 0.85em; color: #721c24;">
+                      <details>
+                        <summary style="cursor: pointer; font-weight: bold;">Детали ошибки</summary>
+                        <pre class="test-traceback" style="margin-top: 0.5rem; padding: 0.5rem; background: #fff; border-radius: 4px; overflow-x: auto; white-space: pre-wrap;">{{ failed_test['traceback'] }}</pre>
+                      </details>
+                    </div>
+                {% endif %}
+              </div>
+              {% endif %}
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="problem-sandbox">
+      <div class="panel">
+        <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
+          <h3 style="margin-bottom: 1rem;">Войдите в систему</h3>
+          <p style="margin-bottom: 1.5rem;">Для отправки решений необходимо войти в систему</p>
+          <a href="{{ url_for('login') }}" class="btn btn-primary">Войти</a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Подключение библиотек для подсветки синтаксиса -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/solarized.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <script>
+    // Таймер решения
+    let startTs = Date.now();
+    const form = document.querySelector('form');
+    if (form) {
+      form.addEventListener('submit', function(){
+        document.getElementById('duration_ms').value = String(Date.now() - startTs);
+        
+        // Обновляем значение textarea из CodeMirror перед отправкой
+        if (currentEditor) {
+          const textarea = currentEditor.getTextArea();
+          textarea.value = currentEditor.getValue();
+        }
+      });
+    }
+    
+    // Глобальная переменная для редактора
+    let currentEditor = null;
+    
+    // Стартовый код
+    const starterCode = `{{ problem['code_python3']|e }}`;
+    
+    // Инициализация CodeMirror для редактора
+    function initCodeMirror(textareaId, mode) {
+      const textarea = document.getElementById(textareaId);
+      if (!textarea) return null;
+      
+      // Определяем тему на основе темы сайта
+      const siteTheme = localStorage.getItem('theme') || 'light';
+      const editorTheme = siteTheme === 'dark' ? 'monokai' : 'default';
+      
+      const editor = CodeMirror.fromTextArea(textarea, {
+        mode: mode,
+        theme: editorTheme,
+        lineNumbers: true,
+        indentUnit: 4,
+        tabSize: 4,
+        indentWithTabs: false,
+        lineWrapping: true,
+        autoCloseBrackets: true,
+        matchBrackets: true,
+        foldGutter: true,
+        gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+        extraKeys: {
+          "Tab": function(cm) {
+            if (cm.somethingSelected()) {
+              cm.indentSelection("add");
+            } else {
+              cm.replaceSelection("    "); // 4 пробела вместо табуляции
+            }
+          },
+          "Shift-Tab": function(cm) {
+            cm.indentSelection("subtract");
+          }
+        }
+      });
+      
+      return editor;
+    }
+    
+    // Функция обновления темы редактора на основе темы сайта
+    function updateEditorTheme() {
+      const siteTheme = localStorage.getItem('theme') || 'light';
+      const editorTheme = siteTheme === 'dark' ? 'monokai' : 'default';
+      
+      // Обновляем тему для редактора
+      if (currentEditor) {
+        currentEditor.setOption('theme', editorTheme);
+        currentEditor.refresh();
+      }
+    }
+    
+    function clearCode() {
+      if (currentEditor) {
+        currentEditor.setValue('');
+        currentEditor.focus();
+      }
+    }
+    
+    function resetToStarter() {
+      if (currentEditor && starterCode) {
+        currentEditor.setValue(starterCode);
+        currentEditor.focus();
+      }
+    }
+    
+    // Инициализация при загрузке страницы
+    document.addEventListener('DOMContentLoaded', function() {
+      // Инициализируем CodeMirror для Python
+      const textareaId = 'code-python3';
+      const textarea = document.getElementById(textareaId);
+      
+      // Ключ для localStorage (уникальный для каждой задачи)
+      const storageKey = `code_editor_${window.location.pathname.split('/').pop()}`;
+      
+      // Приоритет загрузки кода:
+      // 1. Из textarea (code_prefill из сервера)
+      // 2. Из localStorage (если есть сохраненный код)
+      // 3. Стартовый код задачи
+      
+      let codeToLoad = textarea.value.trim();
+      
+      if (!codeToLoad) {
+        // Пробуем загрузить из localStorage
+        const savedCode = localStorage.getItem(storageKey);
+        if (savedCode) {
+          codeToLoad = savedCode;
+          textarea.value = codeToLoad;
+        } else if (starterCode) {
+          // Используем стартовый код
+          codeToLoad = starterCode;
+          textarea.value = codeToLoad;
+        }
+      }
+      
+      currentEditor = initCodeMirror(textareaId, 'python');
+      
+      // Сохраняем код в localStorage при изменении (с задержкой)
+      let saveTimeout;
+      if (currentEditor) {
+        currentEditor.on('change', function() {
+          clearTimeout(saveTimeout);
+          saveTimeout = setTimeout(function() {
+            const code = currentEditor.getValue();
+            localStorage.setItem(storageKey, code);
+          }, 500); // Сохраняем через 500ms после последнего изменения
+        });
+      }
+    });
+  </script>
+  
+  {% if stats_for_chart %}
+  <script>
+    // Графики сравнения производительности
+    const statsData = {{ stats_for_chart|tojson }};
+    const current = statsData.current || {};
+    
+    // График времени выполнения
+    const timeCtx = document.getElementById('timeChart');
+    if (timeCtx && statsData.time_bins) {
+      const timeBins = statsData.time_bins;
+      const currentTimeMs = current.execution_time * 1000;
+      const maxCount = Math.max(...timeBins.counts);
+      
+      // Создаем данные для гистограммы
+      const binLabels = [];
+      const binData = [];
+      const binColors = [];
+      
+      for (let i = 0; i < timeBins.counts.length; i++) {
+        const binStart = timeBins.min + i * timeBins.bin_width;
+        const binEnd = binStart + timeBins.bin_width;
+        binLabels.push(`${binStart.toFixed(0)}-${binEnd.toFixed(0)}`);
+        binData.push(timeBins.counts[i]);
+        
+        // Проверяем, попадает ли текущее значение в этот bin
+        if (currentTimeMs >= binStart && currentTimeMs < binEnd) {
+          binColors.push('rgba(34, 197, 94, 0.8)'); // Зеленый для текущего решения
+        } else {
+          binColors.push('rgba(99, 102, 241, 0.6)'); // Синий для других
+        }
+      }
+      
+      // Плагин для рисования вертикальной линии
+      const timeLinePlugin = {
+        id: 'timeLinePlugin',
+        afterDraw: function(chart) {
+          const xScale = chart.scales.x;
+          const yScale = chart.scales.y;
+          const currentX = xScale.getPixelForValue(currentTimeMs);
+          
+          if (currentX >= xScale.left && currentX <= xScale.right) {
+            const ctx = chart.ctx;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(34, 197, 94, 1)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(currentX, yScale.top);
+            ctx.lineTo(currentX, yScale.bottom);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+      };
+      
+      const timeChart = new Chart(timeCtx, {
+        type: 'bar',
+        plugins: [timeLinePlugin],
+        data: {
+          labels: binLabels,
+          datasets: [{
+            label: 'Количество решений',
+            data: binData,
+            backgroundColor: binColors,
+            borderColor: binColors.map(c => c.replace('0.6', '1').replace('0.8', '1')),
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return `${context.parsed.y} решений`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: 'Время выполнения (ms)'
+              },
+              grid: {
+                display: false
+              }
+            },
+            y: {
+              title: {
+                display: true,
+                text: 'Количество решений'
+              },
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1
+              }
+            }
+          }
+        }
+      });
+    }
+    
+    // График использования памяти
+    const memoryCtx = document.getElementById('memoryChart');
+    if (memoryCtx && statsData.memory_bins) {
+      const memoryBins = statsData.memory_bins;
+      const currentMemory = current.memory_used;
+      
+      // Создаем данные для гистограммы
+      const binLabels = [];
+      const binData = [];
+      const binColors = [];
+      
+      for (let i = 0; i < memoryBins.counts.length; i++) {
+        const binStart = memoryBins.min + i * memoryBins.bin_width;
+        const binEnd = binStart + memoryBins.bin_width;
+        binLabels.push(`${binStart.toFixed(1)}-${binEnd.toFixed(1)}`);
+        binData.push(memoryBins.counts[i]);
+        
+        // Проверяем, попадает ли текущее значение в этот bin
+        if (currentMemory >= binStart && currentMemory < binEnd) {
+          binColors.push('rgba(34, 197, 94, 0.8)'); // Зеленый для текущего решения
+        } else {
+          binColors.push('rgba(99, 102, 241, 0.6)'); // Синий для других
+        }
+      }
+      
+      // Плагин для рисования вертикальной линии
+      const memoryLinePlugin = {
+        id: 'memoryLinePlugin',
+        afterDraw: function(chart) {
+          const xScale = chart.scales.x;
+          const yScale = chart.scales.y;
+          const currentX = xScale.getPixelForValue(currentMemory);
+          
+          if (currentX >= xScale.left && currentX <= xScale.right) {
+            const ctx = chart.ctx;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(34, 197, 94, 1)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(currentX, yScale.top);
+            ctx.lineTo(currentX, yScale.bottom);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+      };
+      
+      const memoryChart = new Chart(memoryCtx, {
+        type: 'bar',
+        plugins: [memoryLinePlugin],
+        data: {
+          labels: binLabels,
+          datasets: [{
+            label: 'Количество решений',
+            data: binData,
+            backgroundColor: binColors,
+            borderColor: binColors.map(c => c.replace('0.6', '1').replace('0.8', '1')),
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return `${context.parsed.y} решений`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: 'Использование памяти (MB)'
+              },
+              grid: {
+                display: false
+              }
+            },
+            y: {
+              title: {
+                display: true,
+                text: 'Количество решений'
+              },
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1
+              }
+            }
+          }
+        }
+      });
+    }
+  </script>
+  {% endif %}
+  
+  <script>
+    // AJAX для реакций на комментарии
+    document.querySelectorAll('.reaction-form').forEach(form => {
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const button = this.querySelector('button');
+        const commentId = this.action.split('/').slice(-2, -1)[0];
+        
+        fetch(this.action, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            alert(data.error);
+            return;
+          }
+          
+          // Обновляем счетчики
+          const likeBtn = form.closest('.comment-item').querySelector('.like-btn');
+          const dislikeBtn = form.closest('.comment-item').querySelector('.dislike-btn');
+          const likeCount = likeBtn.querySelector('.like-count');
+          const dislikeCount = dislikeBtn.querySelector('.dislike-count');
+          
+          likeCount.textContent = data.likes;
+          dislikeCount.textContent = data.dislikes;
+          
+          // Обновляем активное состояние
+          likeBtn.classList.remove('active');
+          dislikeBtn.classList.remove('active');
+          
+          if (data.user_reaction === 'like') {
+            likeBtn.classList.add('active');
+          } else if (data.user_reaction === 'dislike') {
+            dislikeBtn.classList.add('active');
+          }
+        })
+        .catch(error => {
+          console.error('Ошибка:', error);
+          alert('Произошла ошибка при обновлении реакции');
+        });
+      });
+    });
+    
+    // Редактирование комментариев
+    document.querySelectorAll('.edit-comment-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const commentId = this.getAttribute('data-comment-id');
+        const commentItem = this.closest('.comment-item');
+        const contentDiv = commentItem.querySelector('.comment-content');
+        const editForm = commentItem.querySelector('.comment-edit-form');
+        const textarea = editForm.querySelector('.edit-comment-textarea');
+        
+        // Показываем форму редактирования и скрываем контент
+        contentDiv.style.display = 'none';
+        editForm.style.display = 'block';
+        textarea.focus();
+      });
+    });
+    
+    document.querySelectorAll('.cancel-edit-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const commentItem = this.closest('.comment-item');
+        const contentDiv = commentItem.querySelector('.comment-content');
+        const editForm = commentItem.querySelector('.comment-edit-form');
+        
+        // Скрываем форму редактирования и показываем контент
+        editForm.style.display = 'none';
+        contentDiv.style.display = 'block';
+      });
+    });
+    
+    document.querySelectorAll('.save-comment-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const commentId = this.getAttribute('data-comment-id');
+        const commentItem = this.closest('.comment-item');
+        const editForm = commentItem.querySelector('.comment-edit-form');
+        const textarea = editForm.querySelector('.edit-comment-textarea');
+        const contentDiv = commentItem.querySelector('.comment-content');
+        const saveBtn = this;
+        
+        const content = textarea.value.trim();
+        if (!content) {
+          alert('Комментарий не может быть пустым');
+          return;
+        }
+        
+        // Отправляем запрос на сервер
+        const formData = new FormData();
+        formData.append('content', content);
+        
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Сохранение...';
+        
+        fetch(`/comment/${commentId}/edit`, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            alert(data.error);
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Сохранить';
+            return;
+          }
+          
+          // Обновляем контент комментария
+          contentDiv.textContent = data.content;
+          editForm.style.display = 'none';
+          contentDiv.style.display = 'block';
+          
+          // Обновляем метку "отредактировано"
+          const headerDiv = commentItem.querySelector('div[style*="display: flex"]');
+          const timeSpan = headerDiv ? headerDiv.querySelector('span') : null;
+          if (timeSpan && !timeSpan.textContent.includes('отредактировано')) {
+            timeSpan.textContent += ' (отредактировано)';
+          }
+        })
+        .catch(error => {
+          console.error('Ошибка:', error);
+          alert('Произошла ошибка при сохранении комментария');
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Сохранить';
+        });
+      });
+    });
+    
+    // Раскрытие/сворачивание подсказок
+    document.querySelectorAll('.hint-toggle').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const hintItem = this.closest('.hint-item');
+        const hintContent = hintItem.querySelector('.hint-content');
+        const hintIcon = this.querySelector('.hint-icon');
+        const isExpanded = hintContent.style.display === 'block';
+        
+        // Сворачиваем все остальные подсказки
+        document.querySelectorAll('.hint-content').forEach(content => {
+          if (content !== hintContent) {
+            content.style.display = 'none';
+            const item = content.closest('.hint-item');
+            const icon = item.querySelector('.hint-icon');
+            if (icon) {
+              icon.style.transform = 'rotate(0deg)';
+            }
+          }
+        });
+        
+        // Переключаем текущую подсказку
+        if (isExpanded) {
+          hintContent.style.display = 'none';
+          hintIcon.style.transform = 'rotate(0deg)';
+        } else {
+          hintContent.style.display = 'block';
+          hintIcon.style.transform = 'rotate(180deg)';
+        }
+      });
+    });
+  </script>
+{% endblock %}

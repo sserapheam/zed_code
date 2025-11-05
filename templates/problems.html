@@ -1,0 +1,338 @@
+{% extends 'base.html' %}
+{% block title %}{% if selected_topic %}{{ selected_topic }}{% else %}Задачи{% endif %}{% endblock %}
+{% block content %}
+  <div class="problems-page">
+  {% if selected_topic %}
+    <!-- Страница конкретной темы -->
+    <div class="problems-header">
+      <div class="problems-nav">
+        <a href="{{ url_for('problems') }}" class="nav-link">Задачи</a>
+        <span class="nav-separator">›</span>
+        <span class="nav-current">{{ selected_topic }}</span>
+      </div>
+      
+      <div class="problems-filters">
+        <div class="filter-tabs">
+          <a href="{{ url_for('problems', topic=selected_topic) }}" 
+             class="filter-tab {{ 'active' if not difficulty_filter else '' }}">Все</a>
+          <a href="{{ url_for('problems', topic=selected_topic, difficulty='Easy') }}" 
+             class="filter-tab {{ 'active' if difficulty_filter == 'Easy' else '' }}">Легкие</a>
+          <a href="{{ url_for('problems', topic=selected_topic, difficulty='Medium') }}" 
+             class="filter-tab {{ 'active' if difficulty_filter == 'Medium' else '' }}">Средние</a>
+          <a href="{{ url_for('problems', topic=selected_topic, difficulty='Hard') }}" 
+             class="filter-tab {{ 'active' if difficulty_filter == 'Hard' else '' }}">Сложные</a>
+        </div>
+      </div>
+    </div>
+      
+    <div class="problems-list" id="problems-list">
+      {% for p in problems %}
+        <div class="problem-item {% if p['last_passed'] is not none and p['last_passed'] == 1 %}solved-problem{% endif %}">
+          <div class="problem-content">
+            <div class="problem-title">
+              <a href="{{ url_for('problem', problem_id=p['problem_id']) }}" class="title-link">
+                {% if p['last_passed'] is not none and p['last_passed'] == 1 %}
+                  <span class="solved-icon" style="color: #28a745; margin-right: 0.5rem; font-size: 1.1em;">✓</span>
+                {% endif %}
+                {{ p['problem_id'] }}. {{ p['title'] }}
+              </a>
+            </div>
+            <div class="problem-meta">
+              <span class="difficulty {{ p['difficulty'] or 'Easy' }}">{{ p['difficulty'] or 'Easy' }}</span>
+              {% if p['topic_tags'] %}
+                <div class="problem-tags">
+                  {% for tag in p['topic_tags'][:2] %}
+                    <span class="tag">{{ tag }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if p['last_passed'] is not none and p['last_passed'] == 1 %}
+                <span class="status solved">
+                  ✓ Решено
+                </span>
+              {% elif p['last_passed'] is not none and p['last_passed'] == 0 %}
+                <span class="status attempted">
+                  ✗ Попытка
+                </span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="problem-actions">
+            <a href="{{ url_for('problem', problem_id=p['problem_id']) }}" class="btn-solve">
+              {% if p['last_passed'] is not none and p['last_passed'] == 1 %}Повторить{% else %}Решить{% endif %}
+            </a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    
+    <!-- Индикатор загрузки для тем -->
+    <div id="loading-indicator" class="loading-indicator" style="display: none;">
+      <div class="loading-spinner"></div>
+      <span>Загрузка задач...</span>
+    </div>
+    
+    <!-- Кнопка "Показать еще" для тем -->
+    <div id="load-more-container" class="load-more-container">
+      <button id="load-more-btn" class="btn primary">Показать еще</button>
+    </div>
+    
+    <!-- Кнопка "Наверх" для тем -->
+    <button id="back-to-top" class="back-to-top" style="display: none;">
+      <span>↑</span>
+    </button>
+  {% else %}
+    <!-- Главная страница со списком тем и задач -->
+    <div class="problems-header">
+      <h1 class="problems-title">Задачи</h1>
+      <div class="problems-stats">
+        <span class="stat-item">{{ topics|sum(attribute='problem_count') }} задач</span>
+        <span class="stat-item">{{ topics|length }} тем</span>
+      </div>
+    </div>
+
+    <!-- Компактные кнопки тем -->
+    <div class="topics-filter">
+      <div class="topics-buttons">
+        <a href="{{ url_for('problems') }}" class="topic-btn {{ 'active' if not selected_topic else '' }}">
+          Все темы
+        </a>
+        {% for t in topics %}
+          <a href="{{ url_for('problems', topic=t['topic']) }}" class="topic-btn">
+            {{ t['topic'] }}
+            <span class="topic-count">{{ t['problem_count'] }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Список всех задач -->
+    <div class="problems-list" id="problems-list">
+      {% for p in all_problems %}
+        <div class="problem-item {% if p['last_passed'] is not none and p['last_passed'] == 1 %}solved-problem{% endif %}">
+          <div class="problem-content">
+            <div class="problem-title">
+              <a href="{{ url_for('problem', problem_id=p['problem_id']) }}" class="title-link">
+                {% if p['last_passed'] is not none and p['last_passed'] == 1 %}
+                  <span class="solved-icon" style="color: #28a745; margin-right: 0.5rem; font-size: 1.1em;">✓</span>
+                {% endif %}
+                {{ p['problem_id'] }}. {{ p['title'] }}
+              </a>
+            </div>
+            <div class="problem-meta">
+              <span class="difficulty {{ p['difficulty'] or 'Easy' }}">{{ p['difficulty'] or 'Easy' }}</span>
+              {% if p['topic_tags'] %}
+                <div class="problem-tags">
+                  {% for tag in p['topic_tags'][:2] %}
+                    <span class="tag">{{ tag }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if p['last_passed'] is not none and p['last_passed'] == 1 %}
+                <span class="status solved">
+                  ✓ Решено
+                </span>
+              {% elif p['last_passed'] is not none and p['last_passed'] == 0 %}
+                <span class="status attempted">
+                  ✗ Попытка
+                </span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="problem-actions">
+            <a href="{{ url_for('problem', problem_id=p['problem_id']) }}" class="btn-solve">
+              {% if p['last_passed'] is not none and p['last_passed'] == 1 %}Повторить{% else %}Решить{% endif %}
+            </a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    
+    <!-- Индикатор загрузки -->
+    <div id="loading-indicator" class="loading-indicator" style="display: none;">
+      <div class="loading-spinner"></div>
+      <span>Загрузка задач...</span>
+    </div>
+    
+    <!-- Кнопка "Показать еще" -->
+    <div id="load-more-container" class="load-more-container">
+      <button id="load-more-btn" class="btn primary">Показать еще</button>
+    </div>
+    
+    <!-- Кнопка "Наверх" -->
+    <button id="back-to-top" class="back-to-top" style="display: none;">
+      <span>↑</span>
+    </button>
+  {% endif %}
+  </div>
+
+<script>
+// Переменные для пагинации
+let currentPage = 1;
+let isLoading = false;
+let hasMoreProblems = true;
+let currentTopic = '';
+let currentDifficulty = '';
+
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    // Получаем текущие фильтры из URL
+    const urlParams = new URLSearchParams(window.location.search);
+    currentTopic = urlParams.get('topic') || '';
+    currentDifficulty = urlParams.get('difficulty') || '';
+    
+    // Добавляем обработчик для кнопки "Показать еще"
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', loadMoreProblems);
+    }
+    
+    // Добавляем обработчик для кнопки "Наверх"
+    const backToTopBtn = document.getElementById('back-to-top');
+    if (backToTopBtn) {
+        backToTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
+    
+    // Отслеживаем прокрутку для показа кнопки "Наверх"
+    window.addEventListener('scroll', handleScroll);
+});
+
+// Обработка прокрутки для показа кнопки "Наверх"
+function handleScroll() {
+    const backToTopBtn = document.getElementById('back-to-top');
+    if (!backToTopBtn) return;
+    
+    // Показываем кнопку если прокрутили больше чем на 50 задач (примерно 3000px)
+    const scrollThreshold = 3000;
+    if (window.scrollY > scrollThreshold) {
+        backToTopBtn.style.display = 'block';
+    } else {
+        backToTopBtn.style.display = 'none';
+    }
+}
+
+// Загрузка дополнительных задач
+async function loadMoreProblems() {
+    if (isLoading || !hasMoreProblems) return;
+    
+    isLoading = true;
+    showLoadingIndicator();
+    
+    try {
+        currentPage++;
+        const response = await fetch(`/api/problems?page=${currentPage}&per_page=50&topic=${currentTopic}&difficulty=${currentDifficulty}`);
+        const data = await response.json();
+        
+        if (data.problems && data.problems.length > 0) {
+            // Добавляем новые задачи в список
+            const problemsList = document.getElementById('problems-list');
+            if (problemsList) {
+                data.problems.forEach(problem => {
+                    const problemElement = createProblemElement(problem);
+                    problemsList.appendChild(problemElement);
+                });
+            }
+            
+            // Проверяем, есть ли еще задачи
+            hasMoreProblems = data.pagination.has_next;
+            
+            if (!hasMoreProblems) {
+                hideLoadMoreButton();
+            }
+        } else {
+            hasMoreProblems = false;
+            hideLoadMoreButton();
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки задач:', error);
+        currentPage--; // Откатываем номер страницы при ошибке
+    } finally {
+        isLoading = false;
+        hideLoadingIndicator();
+    }
+}
+
+// Создание элемента задачи
+function createProblemElement(problem) {
+    const div = document.createElement('div');
+    div.className = `problem-item ${problem.last_passed ? 'solved-problem' : ''}`;
+    
+    const isSolved = problem.last_passed !== null && problem.last_passed === 1;
+    const hasAttempt = problem.last_passed !== null && problem.last_passed === 0;
+    
+    const statusHtml = isSolved
+        ? `<span class="status solved">✓ Решено</span>`
+        : (hasAttempt 
+            ? `<span class="status attempted">✗ Попытка</span>`
+            : '');
+    
+    const tagsHtml = problem.topic_tags && problem.topic_tags.length > 0
+        ? `<div class="problem-tags">
+             ${problem.topic_tags.slice(0, 2).map(tag => `<span class="tag">${tag}</span>`).join('')}
+           </div>`
+        : '';
+    
+    const solvedIcon = isSolved
+        ? '<span class="solved-icon" style="color: #28a745; margin-right: 0.5rem; font-size: 1.1em;">✓</span>'
+        : '';
+    
+    div.className = `problem-item ${isSolved ? 'solved-problem' : ''}`;
+    
+    div.innerHTML = `
+        <div class="problem-content">
+            <div class="problem-title">
+                <a href="/problem/${problem.problem_id}" class="title-link">
+                    ${solvedIcon}${problem.problem_id}. ${problem.title}
+                </a>
+            </div>
+            <div class="problem-meta">
+                <span class="difficulty ${problem.difficulty}">${problem.difficulty}</span>
+                ${tagsHtml}
+                ${statusHtml}
+            </div>
+        </div>
+        <div class="problem-actions">
+            <a href="/problem/${problem.problem_id}" class="btn-solve">
+                ${isSolved ? 'Повторить' : 'Решить'}
+            </a>
+        </div>
+    `;
+    
+    return div;
+}
+
+// Показать индикатор загрузки
+function showLoadingIndicator() {
+    const indicator = document.getElementById('loading-indicator');
+    if (indicator) {
+        indicator.style.display = 'flex';
+    }
+}
+
+// Скрыть индикатор загрузки
+function hideLoadingIndicator() {
+    const indicator = document.getElementById('loading-indicator');
+    if (indicator) {
+        indicator.style.display = 'none';
+    }
+}
+
+// Показать кнопку "Загрузить еще"
+function showLoadMoreButton() {
+    const container = document.getElementById('load-more-container');
+    if (container) {
+        container.style.display = 'block';
+    }
+}
+
+// Скрыть кнопку "Загрузить еще"
+function hideLoadMoreButton() {
+    const container = document.getElementById('load-more-container');
+    if (container) {
+        container.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

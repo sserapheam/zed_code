@@ -1,45 +1,214 @@
 {% extends 'base.html' %}
 {% block title %}Добро пожаловать{% endblock %}
 {% block content %}
-  <div class="hero">
-    <div class="hero-text">
-      <h1>Тренируйся как на LeetCode</h1>
-      <p class="muted">Решай задачи по Python, повышай рейтинг и прокачивай навыки.</p>
-      <div class="actions">
-        <a class="btn" href="{{ url_for('login') }}">Начать</a>
-        <a class="btn secondary" href="{{ url_for('categories') }}">Смотреть категории</a>
+  <!-- Hero Section -->
+  <div class="hero-modern">
+    <div class="hero-background">
+      <div class="hero-shapes">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
+      </div>
+    </div>
+    <div class="hero-content">
+      <div class="hero-text">
+        <h1 class="hero-title">
+          <span class="title-gradient">zedcode</span>
+        </h1>
+        <p class="hero-description">
+          Решай алгоритмические задачи, готовься к собеседованиям и прокачивай навыки программирования. 
+          Присоединяйся к сообществу разработчиков!
+        </p>
+        <div class="hero-stats">
+          <div class="stat">
+            <div class="stat-number">{{ recent_problems|length }}+</div>
+            <div class="stat-label">Задач</div>
+          </div>
+          <div class="stat">
+            <div class="stat-number">{{ featured_topics|length }}+</div>
+            <div class="stat-label">Тем</div>
+          </div>
+          <div class="stat">
+            <div class="stat-number">{{ top|length }}+</div>
+            <div class="stat-label">Участников</div>
+          </div>
+        </div>
+        <div class="hero-actions">
+          <a class="btn btn-primary btn-large" href="{{ url_for('login') }}">
+            <span>Начать обучение</span>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+            </svg>
+          </a>
+          <a class="btn btn-secondary btn-large" href="{{ url_for('problems') }}">
+            <span>Смотреть задачи</span>
+          </a>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="code-block">
+          <div class="code-header">
+            <div class="code-dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            <span class="code-title">solution.py</span>
+          </div>
+          <div class="code-content">
+            <div class="code-line"><span class="code-keyword">def</span> <span class="code-function">twoSum</span>(nums, target):</div>
+            <div class="code-line indent">seen = {}</div>
+            <div class="code-line indent"><span class="code-keyword">for</span> i, num <span class="code-keyword">in</span> <span class="code-function">enumerate</span>(nums):</div>
+            <div class="code-line indent-2">complement = target - num</div>
+            <div class="code-line indent-2"><span class="code-keyword">if</span> complement <span class="code-keyword">in</span> seen:</div>
+            <div class="code-line indent-3"><span class="code-keyword">return</span> [seen[complement], i]</div>
+            <div class="code-line indent-2">seen[num] = i</div>
+            <div class="code-line indent"><span class="code-keyword">return</span> []</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="home-grid">
-    <section>
-      <h2>Популярные категории</h2>
-      <div class="cards">
-        {% for c in featured_categories %}
-          <a class="card" href="{{ url_for('categories', category_id=c['id']) }}">{{ c['name'] }}</a>
+  <!-- Features Section -->
+  <div class="features-section">
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+          </svg>
+        </div>
+        <h3>Интерактивное обучение</h3>
+        <p>Решай задачи прямо в браузере с мгновенной проверкой кода</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <h3>Разные уровни сложности</h3>
+        <p>От простых задач для новичков до сложных алгоритмов</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+          </svg>
+        </div>
+        <h3>Сообщество разработчиков</h3>
+        <p>Соревнуйся с другими программистами и поднимайся в рейтинге</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Content Grid -->
+  <div class="home-grid-modern">
+    <section class="section-card">
+      <div class="section-header">
+        <h2>Популярные темы</h2>
+        <a href="{{ url_for('problems') }}" class="section-link">Все темы →</a>
+      </div>
+      <div class="categories-grid">
+        {% for t in featured_topics %}
+          <a class="category-card" href="{{ url_for('problems', topic=t['topic']) }}">
+            <div class="category-icon">
+              {% if t['topic'] == 'Array' %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                </svg>
+              {% elif t['topic'] == 'String' %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+              {% elif t['topic'] == 'Hash Table' %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+              {% else %}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              {% endif %}
+            </div>
+            <h3>{{ t['topic'] }}</h3>
+            <p>{{ t['problem_count'] }} задач</p>
+          </a>
         {% endfor %}
       </div>
     </section>
-    <section>
-      <h2>Недавние задачи</h2>
-      <div class="cards">
-        {% for t in recent_tasks %}
-          <a class="card" href="{{ url_for('task_detail', task_id=t['id']) }}">{{ t['title'] }} <span class="badge {{ t['level'] or 'easy' }}">{{ (t['level'] or 'easy')|capitalize }}</span> <span class="muted">({{ t['points'] }} pts)</span></a>
+
+    <section class="section-card">
+      <div class="section-header">
+        <h2>Недавние задачи</h2>
+        <a href="{{ url_for('search') }}" class="section-link">Все задачи →</a>
+      </div>
+      <div class="tasks-list">
+        {% for p in recent_problems %}
+          <a class="task-card" href="{{ url_for('problem', problem_id=p['problem_id']) }}">
+            <div class="task-info">
+              <h3>{{ p['title'] }}</h3>
+              <div class="task-meta">
+                <span class="task-level {{ p['difficulty'] or 'Easy' }}">{{ p['difficulty'] or 'Easy' }}</span>
+              </div>
+            </div>
+            <div class="task-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
+            </div>
+          </a>
         {% endfor %}
       </div>
     </section>
-    <section>
-      <h2>Лидеры</h2>
-      <ol class="leader">
+
+    <section class="section-card leaderboard-card">
+      <div class="section-header">
+        <h2>Лидеры</h2>
+        <a href="{{ url_for('leaderboard') }}" class="section-link">Полный рейтинг →</a>
+      </div>
+      <div class="leaderboard">
         {% for u in top %}
-          <li>
-            {% if u['avatar_path'] %}<img src="{{ url_for('static', filename=u['avatar_path']) }}" class="avatar-sm"/>{% endif %}
-            {{ u['display_name'] or u['username'] }} <span class="muted">{{ u['points'] or 0 }} pts</span>
-          </li>
+          <div class="leader-item">
+            <div class="leader-rank">{{ loop.index }}</div>
+            <div class="leader-info">
+              {% if u['avatar_path'] %}
+                <img src="{{ url_for('static', filename=u['avatar_path']) }}" class="leader-avatar" alt="Avatar"/>
+              {% else %}
+                <div class="leader-avatar-placeholder">
+                  {{ (u['display_name'] or u['username'])[0].upper() }}
+                </div>
+              {% endif %}
+              <div class="leader-details">
+                <div class="leader-name">{{ u['display_name'] or u['username'] }}</div>
+                <div class="leader-points">{{ u['points'] or 0 }} очков</div>
+              </div>
+            </div>
+            {% if loop.index <= 3 %}
+              <div class="leader-medal medal-{{ loop.index }}">
+                {% if loop.index == 1 %}🥇
+                {% elif loop.index == 2 %}🥈
+                {% else %}🥉
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
         {% endfor %}
-      </ol>
+      </div>
     </section>
+  </div>
+
+  <!-- CTA Section -->
+  <div class="cta-section">
+    <div class="cta-content">
+      <h2>Готов начать свой путь в программировании?</h2>
+      <p>Присоединяйся к развивающемуся сообществу разработчиков, которые уже улучшают свои навыки</p>
+      <div class="cta-actions">
+        <a class="btn btn-primary btn-large" href="{{ url_for('register') }}">Создать аккаунт</a>
+        <a class="btn btn-secondary btn-large" href="{{ url_for('login') }}">Войти</a>
+      </div>
+    </div>
   </div>
 {% endblock %}
 
