@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # PostgreSQL база данных
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: coding_platform
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis для очередей и кэша
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Celery worker для выполнения кода
+  celery_worker:
+    build:
+      context: .
+      dockerfile: docker/executor/Dockerfile
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://admin:${DB_PASSWORD}@postgres:5432/coding_platform
+    volumes:
+      - ./celery_app.py:/app/celery_app.py
+    command: celery -A celery_app worker --loglevel=info --concurrency=4
+
+  # Flask приложение
+  web:
+    build: .
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://admin:${DB_PASSWORD}@postgres:5432/coding_platform
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    command: gunicorn -w 4 -b 0.0.0.0:5000 --timeout 120 main_postgres:app
+
+  # Nginx балансировщик нагрузки
+  nginx:
+    image: nginx:alpine
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+

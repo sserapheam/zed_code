@@ -15,7 +15,7 @@
   --warning: #f59e0b;
   --warning-light: #fef3c7;
   
-  /* LeetCode-стиль цвета для сложности */
+  /* Цвета для сложности */
   --easy: #00b8a3;
   --easy-bg: #e8f5e8;
   --medium: #ffc01e;
@@ -94,6 +94,84 @@ html, body {
   max-width: none !important;
 }
 
+/* Подсветка страницы при успешном/неуспешном решении */
+.problem-page.solution-success {
+  animation: flashGreen 1s ease-out;
+}
+
+.problem-page.solution-failed {
+  animation: flashRed 1s ease-out;
+}
+
+@keyframes flashGreen {
+  0% {
+    background-color: rgba(40, 167, 69, 0.3);
+  }
+  50% {
+    background-color: rgba(40, 167, 69, 0.5);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes flashRed {
+  0% {
+    background-color: rgba(220, 53, 69, 0.3);
+  }
+  50% {
+    background-color: rgba(220, 53, 69, 0.5);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.dark-theme.problem-page.solution-success {
+  animation: flashGreenDark 1s ease-out;
+}
+
+.dark-theme.problem-page.solution-failed {
+  animation: flashRedDark 1s ease-out;
+}
+
+@keyframes flashGreenDark {
+  0% {
+    background-color: rgba(40, 167, 69, 0.2);
+  }
+  50% {
+    background-color: rgba(40, 167, 69, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes flashRedDark {
+  0% {
+    background-color: rgba(220, 53, 69, 0.2);
+  }
+  50% {
+    background-color: rgba(220, 53, 69, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* Стили для результатов в правой колонке */
+.problem-sandbox .results-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.problem-sandbox .results-section h3 {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
 .layout {
   display: grid;
   grid-template-columns: 280px 1fr 320px;
@@ -151,6 +229,40 @@ html, body {
   display: flex;
   align-items: center;
   gap: var(--spacing-lg);
+}
+
+.home-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  min-width: 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.home-btn:hover {
+  background: var(--border);
+  transform: scale(1.05);
+}
+
+.home-btn svg,
+.home-btn .home-icon {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px;
+  min-height: 24px;
+  color: var(--text);
+  display: block;
+  flex-shrink: 0;
+}
+
+.dark-theme .home-btn svg,
+.dark-theme .home-btn .home-icon {
+  color: var(--text);
 }
 
 .brand {
@@ -1465,6 +1577,249 @@ html.dark-theme .nav {
   border-color: var(--border);
 }
 
+/* Стили для примеров и ограничений в темной теме */
+.dark-theme .example-item,
+html.dark-theme .example-item {
+  background: var(--bg-secondary) !important;
+  border-left-color: var(--primary) !important;
+}
+
+.dark-theme .example-code,
+html.dark-theme .example-code,
+.dark-theme code,
+html.dark-theme code {
+  background: var(--bg) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.dark-theme .example-row strong,
+html.dark-theme .example-row strong {
+  color: var(--text-muted) !important;
+}
+
+.dark-theme .example-explanation,
+html.dark-theme .example-explanation {
+  border-top-color: var(--border) !important;
+  color: var(--text-muted) !important;
+}
+
+.dark-theme .constraints-text,
+html.dark-theme .constraints-text {
+  background: var(--bg-secondary) !important;
+  border-left-color: var(--warning) !important;
+  color: var(--text) !important;
+}
+
+/* Стили для результатов тестирования в темной теме */
+.dark-theme .result-item,
+html.dark-theme .result-item {
+  background: rgba(239, 68, 68, 0.15) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+  color: #fca5a5 !important;
+}
+
+.dark-theme .result-item code,
+html.dark-theme .result-item code,
+.dark-theme .result-item .test-output-code,
+html.dark-theme .result-item .test-output-code,
+.dark-theme .result-item pre,
+html.dark-theme .result-item pre,
+.dark-theme .result-item .test-traceback,
+html.dark-theme .result-item .test-traceback {
+  background: var(--bg-secondary) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+.dark-theme .example-label,
+html.dark-theme .example-label {
+  color: var(--text-muted) !important;
+}
+
+.dark-theme .success-result,
+html.dark-theme .success-result {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(34, 197, 94, 0.15) 100%) !important;
+  border-color: rgba(34, 197, 94, 0.4) !important;
+  color: #86efac !important;
+}
+
+.dark-theme .performance-chart,
+html.dark-theme .performance-chart {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+.dark-theme .performance-chart h4,
+html.dark-theme .performance-chart h4,
+.dark-theme .performance-chart div,
+html.dark-theme .performance-chart div {
+  color: var(--text) !important;
+}
+
+.dark-theme .performance-charts,
+html.dark-theme .performance-charts {
+  color: var(--text) !important;
+}
+
+.dark-theme .performance-chart strong,
+html.dark-theme .performance-chart strong {
+  color: var(--text) !important;
+}
+
+/* Переопределение цветов в инлайн стилях для графиков производительности */
+.dark-theme .performance-chart [style*="color: #1e293b"],
+html.dark-theme .performance-chart [style*="color: #1e293b"],
+.dark-theme .performance-chart [style*="color: #64748b"],
+html.dark-theme .performance-chart [style*="color: #64748b"] {
+  color: var(--text) !important;
+}
+
+.dark-theme .performance-chart [style*="color: #64748b"],
+html.dark-theme .performance-chart [style*="color: #64748b"] {
+  color: var(--text-muted) !important;
+}
+
+/* Стили для комментариев */
+.comments-section {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.comment-item {
+  transition: all 0.2s ease;
+}
+
+.comment-item:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+.comment-form textarea {
+  transition: border-color 0.2s ease;
+}
+
+.comment-form textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.dark-theme .comment-item,
+html.dark-theme .comment-item {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+.dark-theme .comment-form textarea,
+html.dark-theme .comment-form textarea {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.dark-theme .comment-form textarea::placeholder,
+html.dark-theme .comment-form textarea::placeholder {
+  color: var(--text-muted) !important;
+}
+
+/* Стили для реакций на комментарии */
+.reaction-btn:hover {
+  background: var(--bg) !important;
+  border-color: var(--primary) !important;
+  transform: translateY(-1px);
+}
+
+.reaction-btn.like-btn.active {
+  background: rgba(34, 197, 94, 0.1) !important;
+  border-color: #22c55e !important;
+  color: #22c55e !important;
+}
+
+.reaction-btn.dislike-btn.active {
+  background: rgba(239, 68, 68, 0.1) !important;
+  border-color: #ef4444 !important;
+  color: #ef4444 !important;
+}
+
+.reaction-form {
+  display: inline;
+}
+
+.comment-reactions {
+  margin-top: 0.5rem;
+}
+
+.dark-theme .reaction-btn,
+html.dark-theme .reaction-btn {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border) !important;
+  color: var(--text-muted) !important;
+}
+
+.dark-theme .reaction-btn:hover,
+html.dark-theme .reaction-btn:hover {
+  background: var(--bg) !important;
+  border-color: var(--primary) !important;
+}
+
+/* Стили для редактирования комментариев */
+.edit-comment-btn:hover {
+  text-decoration: underline;
+}
+
+.comment-edit-form textarea {
+  transition: border-color 0.2s ease;
+}
+
+.comment-edit-form textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.dark-theme .comment-edit-form textarea,
+html.dark-theme .comment-edit-form textarea {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+/* Стили для подсказок */
+.hint-toggle:hover {
+  background: var(--bg) !important;
+}
+
+.hint-item {
+  transition: all 0.2s ease;
+}
+
+.hint-item:hover {
+  border-color: var(--border-hover);
+}
+
+.dark-theme .hint-item,
+html.dark-theme .hint-item {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border) !important;
+}
+
+.dark-theme .hint-toggle,
+html.dark-theme .hint-toggle {
+  color: var(--text) !important;
+}
+
+.dark-theme .hint-toggle:hover,
+html.dark-theme .hint-toggle:hover {
+  background: var(--bg) !important;
+}
+
+.dark-theme .hint-content,
+html.dark-theme .hint-content {
+  border-top-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
 /* CodeMirror стили - адаптируются к теме сайта */
 .CodeMirror {
   border: 1px solid var(--border);
@@ -2343,7 +2698,7 @@ html.dark-theme .nav {
 }
 
 /* ========================================
-   LeetCode-СТИЛЬ ДОПОЛНИТЕЛЬНЫЕ СТИЛИ
+   ДОПОЛНИТЕЛЬНЫЕ СТИЛИ
    ======================================== */
 
 /* Стили для сложности задач */
@@ -2473,7 +2828,7 @@ html.dark-theme .nav {
 }
 
 /* ========================================
-   LeetCode-СТИЛЬ СТРАНИЦА ЗАДАЧ
+   СТРАНИЦА ЗАДАЧ
    ======================================== */
 
 /* Заголовок страницы задач */
@@ -2580,6 +2935,16 @@ html.dark-theme .nav {
   box-shadow: 0 2px 8px var(--shadow);
 }
 
+.problem-item.solved-problem {
+  background: linear-gradient(90deg, #f0fdf4 0%, var(--bg-secondary) 5%);
+  border-left: 4px solid #28a745;
+}
+
+.problem-item.solved-problem:hover {
+  border-left-color: #22c55e;
+  box-shadow: 0 2px 8px rgba(40, 167, 69, 0.2);
+}
+
 .problem-content {
   flex: 1;
 }
@@ -2629,16 +2994,44 @@ html.dark-theme .nav {
 }
 
 .status {
-  font-size: 0.8rem;
-  font-weight: 500;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .status.solved {
-  color: var(--accent);
+  color: #155724;
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
 }
 
 .status.attempted {
-  color: var(--warning);
+  color: #856404;
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+}
+
+.solved-icon {
+  display: inline-block;
+  animation: checkmarkBounce 0.6s ease-out;
+}
+
+@keyframes checkmarkBounce {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .problem-actions {

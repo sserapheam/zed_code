@@ -10,7 +10,13 @@
         {% for s in submissions %}
           <tr>
             <td><a href="{{ url_for('submission_detail', solution_id=s['id']) }}">{{ s['id'] }}</a></td>
-            <td>{{ s['problem_title'] }}</td>
+            <td>
+              {% if s.get('problem_id') %}
+                <a href="{{ url_for('problem', problem_id=s['problem_id']) }}" style="color: var(--primary); text-decoration: none;">{{ s['problem_title'] }}</a>
+              {% else %}
+                {{ s['problem_title'] }}
+              {% endif %}
+            </td>
             <td><span class="badge {{ s['difficulty'] or 'Easy' }}">{{ s['difficulty'] or 'Easy' }}</span></td>
             <td>{% if s['passed'] %}<span class="ok">OK</span>{% else %}<span class="bad">FAIL</span>{% endif %}</td>
             <td>{{ s['created_at'] }}</td>

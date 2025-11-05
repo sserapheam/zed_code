@@ -13,8 +13,7 @@
     <div class="hero-content">
       <div class="hero-text">
         <h1 class="hero-title">
-          <span class="title-gradient">LeetCode</span>
-          <span class="title-accent">Clone</span>
+          <span class="title-gradient">zedcode</span>
         </h1>
         <p class="hero-description">
           Решай алгоритмические задачи, готовься к собеседованиям и прокачивай навыки программирования. 
@@ -147,7 +146,7 @@
       </div>
       <div class="tasks-list">
         {% for p in recent_problems %}
-          <a class="task-card" href="{{ url_for('problem_detail', problem_id=p['problem_id']) }}">
+          <a class="task-card" href="{{ url_for('problem', problem_id=p['problem_id']) }}">
             <div class="task-info">
               <h3>{{ p['title'] }}</h3>
               <div class="task-meta">
@@ -204,7 +203,7 @@
   <div class="cta-section">
     <div class="cta-content">
       <h2>Готов начать свой путь в программировании?</h2>
-      <p>Присоединяйся к тысячам разработчиков, которые уже улучшают свои навыки</p>
+      <p>Присоединяйся к развивающемуся сообществу разработчиков, которые уже улучшают свои навыки</p>
       <div class="cta-actions">
         <a class="btn btn-primary btn-large" href="{{ url_for('register') }}">Создать аккаунт</a>
         <a class="btn btn-secondary btn-large" href="{{ url_for('login') }}">Войти</a>

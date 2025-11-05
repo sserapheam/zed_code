@@ -25,8 +25,15 @@
   <body class="{% block body_class %}{% endblock %}">
     <nav class="nav">
       <div class="container nav-inner">
-        <a href="{{ url_for('problems') }}" class="brand">LeetCode Clone</a>
+        <a class="btn secondary home-btn" href="{{ url_for('index') }}" title="Главная страница">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="home-icon">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+        </a>
+        <a href="{{ url_for('problems') }}" class="brand">zedcode</a>
         <div class="spacer"></div>
+        <a class="btn secondary" href="{{ url_for('problems') }}">Задачи</a>
         <form class="search" method="get" action="{{ url_for('search') }}">
           <input type="text" name="q" placeholder="Поиск задач..." value="{{ request.args.get('q','') }}" />
         </form>
@@ -34,7 +41,6 @@
           <span id="theme-icon">🌙</span>
         </button>
         {% if session.get('user_id') %}
-          <a class="btn secondary" href="{{ url_for('problems') }}">Задачи</a>
           <a class="btn secondary" href="{{ url_for('sandbox') }}">Песочница</a>
           <a class="btn secondary" href="{{ url_for('leaderboard') }}">Лидерборд</a>
           <a class="btn secondary" href="{{ url_for('submissions') }}">Отправки</a>

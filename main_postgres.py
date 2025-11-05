@@ -175,7 +175,7 @@ def create_app() -> Flask:
             topics = execute_query(g.db,
                 """
                 SELECT DISTINCT unnest(topic_tags) as topic, COUNT(*) as problem_count
-                FROM real_leetcode_problems 
+                FROM leetcode_problems_with_tests 
                 WHERE topic_tags IS NOT NULL
                 GROUP BY unnest(topic_tags)
                 ORDER BY topic
@@ -193,14 +193,11 @@ def create_app() -> Flask:
 
     @app.route("/")
     def index():
-        if session.get("user_id"):
-            return redirect(url_for("problems"))
-        
-        # Получаем популярные темы
+        # Получаем популярные темы (доступна всем пользователям)
         featured_topics = execute_query(g.db,
             """
             SELECT topic, COUNT(*) as problem_count
-            FROM real_leetcode_problems 
+            FROM leetcode_problems_with_tests 
             WHERE topic IS NOT NULL AND topic != ''
             GROUP BY topic
             ORDER BY problem_count DESC
@@ -212,8 +209,8 @@ def create_app() -> Flask:
         recent_problems = execute_query(g.db,
             """
             SELECT problem_id, title, difficulty, topic_tags
-            FROM real_leetcode_problems 
-            ORDER BY id DESC 
+            FROM leetcode_problems_with_tests 
+            ORDER BY created_at DESC NULLS LAST, id DESC
             LIMIT 6
             """
         )
@@ -234,27 +231,30 @@ def create_app() -> Flask:
         difficulty = (request.args.get("difficulty") or "").strip()
         topic = (request.args.get("topic") or "").strip()
         
-        sql = """
-            SELECT problem_id, title, difficulty, topic_tags, topic
-            FROM real_leetcode_problems 
-            WHERE 1=1
-        """
+        # Строим запрос
+        where_clause = "WHERE 1=1"
         params = []
         
         if q:
-            sql += " AND (title ILIKE %s OR description ILIKE %s)"
+            where_clause += " AND (title ILIKE %s OR description ILIKE %s)"
             like = f"%{q}%"
             params.extend([like, like])
         
         if difficulty in {"Easy", "Medium", "Hard"}:
-            sql += " AND difficulty = %s"
+            where_clause += " AND difficulty = %s"
             params.append(difficulty)
             
         if topic:
-            sql += " AND %s = ANY(topic_tags)"
+            where_clause += " AND %s = ANY(topic_tags)"
             params.append(topic)
-            
-        sql += " ORDER BY problem_id DESC LIMIT 100"
+        
+        sql = """
+            SELECT problem_id, title, difficulty, topic_tags, topic
+            FROM leetcode_problems_with_tests 
+            """ + where_clause + """
+            ORDER BY problem_id DESC
+            LIMIT 100
+        """
         results = execute_query(g.db, sql, params)
         return render_template("search.html", q=q, difficulty=difficulty, topic=topic, results=results)
 
@@ -311,20 +311,24 @@ def create_app() -> Flask:
         user_id = session.get("user_id")
         if not user_id:
             return redirect(url_for("login"))
-        problems = execute_query(g.db, "SELECT problem_id, title, difficulty FROM real_leetcode_problems ORDER BY problem_id")
+        problems = execute_query(g.db,
+            """
+            SELECT problem_id, title, difficulty
+            FROM leetcode_problems_with_tests
+            ORDER BY problem_id
+            """
+        )
         return render_template("problems_list.html", problems=problems)
 
     @app.route("/problems")
     def problems():
-        user_id = session.get("user_id")
-        if not user_id:
-            return redirect(url_for("login"))
+        user_id = session.get("user_id")  # Может быть None для неавторизованных
         
         # Получаем все темы из колонки topic
         topics = execute_query(g.db,
             """
             SELECT topic, COUNT(*) as problem_count
-            FROM real_leetcode_problems 
+            FROM leetcode_problems_with_tests 
             WHERE topic IS NOT NULL AND topic != ''
             GROUP BY topic
             ORDER BY problem_count DESC, topic
@@ -339,14 +343,33 @@ def create_app() -> Flask:
         
         if selected_topic:
             # Получаем задачи для выбранной темы (только первые 50)
-            sql = """
-                SELECT problem_id, title, difficulty, topic_tags,
-                (SELECT s.passed FROM solutions s WHERE s.task_id = problem_id AND s.user_id = %s 
-                 ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS last_passed 
-                FROM real_leetcode_problems 
-                WHERE topic = %s
-            """
-            params = [user_id, selected_topic]
+            if user_id:
+                sql = """
+                    SELECT problem_id, title, difficulty, topic_tags,
+                    CASE 
+                        WHEN EXISTS(
+                            SELECT 1 FROM problem_test_results ptr 
+                            WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id 
+                            AND ptr.user_id = %s AND ptr.status='passed'
+                        ) THEN 1
+                        WHEN EXISTS(
+                            SELECT 1 FROM problem_test_results ptr 
+                            WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id 
+                            AND ptr.user_id = %s
+                        ) THEN 0
+                        ELSE NULL
+                    END AS last_passed
+                    FROM leetcode_problems_with_tests 
+                    WHERE topic = %s
+                """
+                params = [user_id, user_id, selected_topic]
+            else:
+                sql = """
+                    SELECT problem_id, title, difficulty, topic_tags, NULL AS last_passed
+                    FROM leetcode_problems_with_tests 
+                    WHERE topic = %s
+                """
+                params = [selected_topic]
             
             if difficulty_filter in {"Easy", "Medium", "Hard"}:
                 sql += " AND difficulty = %s"
@@ -358,17 +381,38 @@ def create_app() -> Flask:
         # Если не выбрана конкретная тема, получаем только первые 50 задач
         all_problems = []
         if not selected_topic:
-            all_problems = execute_query(g.db,
-                """
-                SELECT problem_id, title, difficulty, topic_tags,
-                (SELECT s.passed FROM solutions s WHERE s.task_id = problem_id AND s.user_id = %s 
-                 ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS last_passed 
-                FROM real_leetcode_problems 
-                ORDER BY problem_id
-                LIMIT 50
-                """,
-                (user_id,)
-            )
+            if user_id:
+                all_problems = execute_query(g.db,
+                    """
+                    SELECT problem_id, title, difficulty, topic_tags,
+                    CASE 
+                        WHEN EXISTS(
+                            SELECT 1 FROM problem_test_results ptr 
+                            WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id 
+                            AND ptr.user_id = %s AND ptr.status='passed'
+                        ) THEN 1
+                        WHEN EXISTS(
+                            SELECT 1 FROM problem_test_results ptr 
+                            WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id 
+                            AND ptr.user_id = %s
+                        ) THEN 0
+                        ELSE NULL
+                    END AS last_passed
+                    FROM leetcode_problems_with_tests
+                    ORDER BY problem_id
+                    LIMIT 50
+                    """,
+                    (user_id, user_id)
+                )
+            else:
+                all_problems = execute_query(g.db,
+                    """
+                    SELECT problem_id, title, difficulty, topic_tags, NULL AS last_passed
+                    FROM leetcode_problems_with_tests
+                    ORDER BY problem_id
+                    LIMIT 50
+                    """
+                )
         
         return render_template("problems.html", 
                              topics=topics, 
@@ -394,27 +438,32 @@ def create_app() -> Flask:
         offset = (page - 1) * per_page
         
         # Строим SQL запрос
-        sql = """
-            SELECT problem_id, title, difficulty, topic_tags,
-            (SELECT s.passed FROM solutions s WHERE s.task_id = problem_id AND s.user_id = %s 
-             ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS last_passed 
-            FROM real_leetcode_problems 
-            WHERE 1=1
-        """
-        params = [user_id]
+        where_clause = "WHERE 1=1"
+        base_params = []
         
-        # Добавляем фильтры
         if topic:
-            sql += " AND topic = %s"
-            params.append(topic)
+            where_clause += " AND topic = %s"
+            base_params.append(topic)
         
         if difficulty in {"Easy", "Medium", "Hard"}:
-            sql += " AND difficulty = %s"
-            params.append(difficulty)
+            where_clause += " AND difficulty = %s"
+            base_params.append(difficulty)
         
-        # Добавляем сортировку и пагинацию
-        sql += " ORDER BY problem_id LIMIT %s OFFSET %s"
-        params.extend([per_page, offset])
+        sql = """
+            SELECT problem_id, title, difficulty, topic_tags,
+            COALESCE((
+                SELECT CASE WHEN EXISTS(
+                    SELECT 1 FROM problem_test_results ptr 
+                    WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id 
+                    AND ptr.user_id = %s AND ptr.status='passed'
+                ) THEN 1 ELSE 0 END
+            ), 0) AS last_passed
+            FROM leetcode_problems_with_tests 
+            """ + where_clause + """
+            ORDER BY problem_id
+            LIMIT %s OFFSET %s
+        """
+        params = [user_id] + base_params + [per_page, offset]
         
         # Получаем задачи
         problems = execute_query(g.db, sql, params)
@@ -422,19 +471,10 @@ def create_app() -> Flask:
         # Получаем общее количество задач для пагинации
         count_sql = """
             SELECT COUNT(*) as total 
-            FROM real_leetcode_problems 
-            WHERE 1=1
+            FROM leetcode_problems_with_tests 
+            """ + where_clause + """
         """
-        count_params = []
-        
-        if topic:
-            count_sql += " AND topic = %s"
-            count_params.append(topic)
-        
-        if difficulty in {"Easy", "Medium", "Hard"}:
-            count_sql += " AND difficulty = %s"
-            count_params.append(difficulty)
-        
+        count_params = base_params
         total_count = execute_query(g.db, count_sql, count_params)[0]['total']
         
         # Форматируем результат
@@ -468,9 +508,14 @@ def create_app() -> Flask:
         
         sql = """
             SELECT problem_id, title, difficulty, topic_tags,
-            (SELECT s.passed FROM solutions s WHERE s.task_id = problem_id AND s.user_id = %s 
-             ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS last_passed 
-            FROM real_leetcode_problems 
+            COALESCE((
+                SELECT CASE WHEN EXISTS(
+                    SELECT 1 FROM problem_test_results ptr 
+                    WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id 
+                    AND ptr.user_id = %s AND ptr.status='passed'
+                ) THEN 1 ELSE 0 END
+            ), 0) AS last_passed
+            FROM leetcode_problems_with_tests 
             WHERE topic = %s 
             ORDER BY difficulty, problem_id
         """
@@ -538,53 +583,88 @@ def create_app() -> Flask:
         return render_template("leaderboard.html", top=top)
 
     @app.route("/problem/<int:problem_id>", methods=["GET", "POST"])
-    def problem_detail(problem_id: int):
-        user_id = session.get("user_id")
-        if not user_id:
-            return redirect(url_for("login"))
+    def problem(problem_id: int):
+        user_id = session.get("user_id")  # Может быть None для неавторизованных
 
+        # Получаем задачу из новой таблицы
         problem = execute_one(g.db,
             """
             SELECT problem_id, title, description, difficulty, 
-                   topic_tags, topic, code_python3, code_javascript, code_java, 
-                   code_c, code_csharp, code_cpp, examples, constraints
-            FROM real_leetcode_problems 
+                   topic_tags, topic, code_python3, examples, constraints, tests, hints
+            FROM leetcode_problems_with_tests 
             WHERE problem_id=%s
             """,
             (problem_id,),
         )
+        
         if not problem:
             flash("Задача не найдена", "error")
             return redirect(url_for("problems"))
-
-        # Получаем последнее решение пользователя
-        last_solution = execute_one(g.db,
-            "SELECT code FROM solutions WHERE user_id=%s AND task_id=%s ORDER BY created_at DESC LIMIT 1",
-            (user_id, problem_id),
-        )
         
-        # Определяем стартовый код в зависимости от языка
-        selected_language = request.args.get('lang', session.get('selected_language', 'python3'))
-        session['selected_language'] = selected_language
-        starter_code = ""
+        # Парсим JSON поля если они есть
+        if problem.get("examples"):
+            try:
+                if isinstance(problem["examples"], str):
+                    problem["examples"] = json.loads(problem["examples"])
+                elif not isinstance(problem["examples"], list):
+                    problem["examples"] = []
+            except Exception:
+                problem["examples"] = []
         
-        if selected_language == 'python3' and problem.get('code_python3'):
-            starter_code = problem['code_python3']
-        elif selected_language == 'javascript' and problem.get('code_javascript'):
-            starter_code = problem['code_javascript']
-        elif selected_language == 'java' and problem.get('code_java'):
-            starter_code = problem['code_java']
-        elif selected_language == 'c' and problem.get('code_c'):
-            starter_code = problem['code_c']
-        elif selected_language == 'csharp' and problem.get('code_csharp'):
-            starter_code = problem['code_csharp']
-        elif selected_language == 'cpp' and problem.get('code_cpp'):
-            starter_code = problem['code_cpp']
+        # Парсим подсказки
+        hints_data = problem.get("hints")
+        if hints_data:
+            try:
+                if isinstance(hints_data, str):
+                    # Пробуем распарсить как JSON
+                    if hints_data.strip().startswith('[') or hints_data.strip().startswith('{'):
+                        problem["hints"] = json.loads(hints_data)
+                    else:
+                        # Если это просто строка, делаем из неё массив
+                        problem["hints"] = [hints_data] if hints_data.strip() else []
+                elif isinstance(hints_data, list):
+                    # Уже список
+                    problem["hints"] = hints_data
+                elif isinstance(hints_data, dict):
+                    # Если это словарь, преобразуем в список значений
+                    problem["hints"] = list(hints_data.values()) if hints_data else []
+                else:
+                    problem["hints"] = []
+            except Exception as e:
+                print(f"Ошибка парсинга подсказок: {e}")
+                # Если не удалось распарсить, пробуем как строку
+                problem["hints"] = [str(hints_data)] if hints_data else []
         else:
-            # Fallback на Python3 если выбранный язык недоступен
-            starter_code = problem.get('code_python3', '')
+            problem["hints"] = []
         
-        code_prefill = last_solution["code"] if last_solution else starter_code
+        # Фильтруем пустые подсказки
+        if problem["hints"]:
+            problem["hints"] = [h for h in problem["hints"] if h and str(h).strip()]
+        
+        # Отладочная информация
+        print(f"DEBUG: Problem {problem_id} hints: {problem.get('hints')}, type: {type(problem.get('hints'))}, length: {len(problem.get('hints', []))}")
+        
+        # constraints уже должна быть строкой, но проверим
+        if problem.get("constraints") and isinstance(problem["constraints"], dict):
+            problem["constraints"] = str(problem["constraints"])
+
+        # Используем только Python 3
+        starter_code = problem.get('code_python3', '')
+        language = "python3"
+        
+        # Получаем код из сессии для этой задачи, если есть
+        session_key = f"code_{problem_id}"
+        code_prefill = session.get(session_key, "")
+
+        # Если в сессии нет кода, берем из БД или стартовый код (только для авторизованных)
+        if not code_prefill and user_id:
+            last_solution = execute_one(g.db,
+                "SELECT solution_code as code FROM problem_test_results WHERE user_id=%s AND problem_id=%s ORDER BY created_at DESC LIMIT 1",
+                (user_id, problem_id),
+            )
+            code_prefill = last_solution["code"] if last_solution else starter_code
+        elif not code_prefill:
+            code_prefill = starter_code
 
         results: Dict[str, object] | None = None
         
@@ -595,7 +675,12 @@ def create_app() -> Flask:
         sidebar_tree = None
         if problem and problem["topic"]:
             rows = execute_query(g.db,
-                "SELECT problem_id, title, difficulty FROM real_leetcode_problems WHERE topic=%s ORDER BY difficulty, problem_id",
+                """
+                SELECT problem_id, title, difficulty
+                FROM leetcode_problems_with_tests 
+                WHERE topic=%s
+                ORDER BY difficulty, problem_id
+                """,
                 (problem["topic"],),
             )
             groups: Dict[str, List[Dict[str, object]]] = {"Easy": [], "Medium": [], "Hard": []}
@@ -614,55 +699,296 @@ def create_app() -> Flask:
             }
 
         if request.method == "POST":
+            # Проверяем авторизацию для отправки решений
+            if not user_id:
+                flash("Для отправки решений необходимо войти в систему", "error")
+                return redirect(url_for("login"))
+            
             user_code = request.form.get("code") or ""
             duration_ms = int(request.form.get("duration_ms") or 0)
+            language = "python3"  # Только Python 3
+            
+            # Сохраняем код в сессии для этой задачи
+            session_key = f"code_{problem_id}"
+            session[session_key] = user_code
+            
             if not user_code.strip():
                 flash("Код решения не может быть пустым", "error")
                 return render_template(
-                    "problem.html", problem=problem, code_prefill=user_code, results=None, tags=tags
+                    "problem.html", problem=problem, code_prefill=user_code, results=None, tags=tags, sidebar_tree=sidebar_tree
                 )
-
-            # Для LeetCode задач пока используем простую проверку
-            # В будущем можно добавить реальные тест-кейсы
-            testcases = [("", "")]  # Заглушка
-            tests: List[Tuple[str, str]] = testcases
-
-            judge_report = judge_user_code(user_code, tests, time_limit_sec=2.0)
-            passed = int(judge_report["passed"])  # type: ignore[index]
 
             cursor = get_cursor(g.db)
-            cursor.execute(
-                """
-                INSERT INTO solutions(user_id, task_id, code, passed, result_json, created_at, duration_ms)
-                VALUES(%s,%s,%s,%s,%s,NOW(),%s)
-                """,
-                (
-                    user_id,
-                    problem_id,
-                    user_code,
-                    passed,
-                    json.dumps(judge_report, ensure_ascii=False),
-                    duration_ms,
-                ),
-            )
-
-            if passed:
-                # Проверяем, решалась ли задача ранее
-                prev_passed = execute_one(g.db,
-                    "SELECT 1 FROM solutions WHERE user_id=%s AND task_id=%s AND passed=1 AND id < (SELECT MAX(id) FROM solutions WHERE user_id=%s AND task_id=%s) LIMIT 1",
-                    (user_id, problem_id, user_id, problem_id),
-                )
-                if not prev_passed:
-                    # Начисляем очки за первую сдачу
-                    points = 100 if problem["difficulty"] == "Easy" else (200 if problem["difficulty"] == "Medium" else 300)
-                    cursor.execute("UPDATE users SET points = COALESCE(points,0) + %s WHERE id=%s", (points, user_id))
-                    flash(f"Задача решена! +{points} очков", "success")
+            judge_report = None
+            passed = 0
             
-            g.db.commit()
-            cursor.close()
+            # Проверяем, есть ли тесты в новой таблице
+            if problem.get("tests"):
+                try:
+                    # Парсим JSON тесты (PostgreSQL возвращает jsonb как dict или список)
+                    tests_raw = problem["tests"]
+                    if isinstance(tests_raw, str):
+                        tests_data = json.loads(tests_raw)
+                    elif isinstance(tests_raw, (list, dict)):
+                        tests_data = tests_raw
+                    else:
+                        tests_data = []
+                    
+                    # Выполняем тестирование с новой функцией
+                    judge_report = judge_user_code_with_tests(
+                        user_code, 
+                        tests_data, 
+                        language=language,
+                        time_limit_sec=2.0
+                    )
+                    
+                    passed = 1 if judge_report.get("passed") else 0
+                    
+                    # Сохраняем результаты в новую таблицу
+                    cursor.execute(
+                        """
+                        INSERT INTO problem_test_results(
+                            problem_id, user_id, solution_code, test_results, 
+                            passed_tests, total_tests, execution_time, memory_used, status, created_at
+                        )
+                        VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                        """,
+                        (
+                            problem_id,
+                            user_id,
+                            user_code,
+                            json.dumps(judge_report.get("results", []), ensure_ascii=False),
+                            judge_report.get("passed_tests", 0),
+                            judge_report.get("total_tests", 0),
+                            judge_report.get("execution_time", 0.0),
+                            judge_report.get("memory_used", 0.0),
+                            judge_report.get("status", "failed"),
+                        ),
+                    )
+                    
+                except Exception as e:
+                    # Откатываем транзакцию при ошибке
+                    try:
+                        g.db.rollback()
+                    except Exception:
+                        pass
+                    cursor.close()
+                    
+                    # В случае ошибки формируем отчет об ошибке
+                    error_msg = str(e)
+                    judge_report = {
+                        "passed": False,
+                        "results": [],
+                        "error": error_msg,
+                        "status": "error",
+                    }
+                    
+                    # Пытаемся сохранить информацию об ошибке в новую транзакцию
+                    try:
+                        cursor = get_cursor(g.db)
+                        cursor.execute(
+                            """
+                            INSERT INTO problem_test_results(
+                                problem_id, user_id, solution_code, status, error_message, created_at
+                            )
+                            VALUES(%s, %s, %s, %s, %s, NOW())
+                            """,
+                            (problem_id, user_id, user_code, "error", error_msg),
+                        )
+                        g.db.commit()
+                        cursor.close()
+                        flash(f"Ошибка при тестировании: {error_msg}", "error")
+                    except Exception as e2:
+                        # Если даже сохранение ошибки не удалось, откатываем и показываем сообщение
+                        try:
+                            g.db.rollback()
+                        except Exception:
+                            pass
+                        if cursor:
+                            cursor.close()
+                        flash(f"Критическая ошибка при сохранении результатов: {str(e2)}. Исходная ошибка: {error_msg}", "error")
+            else:
+                # Если нет тестов, просто показываем ошибку
+                flash("Для этой задачи нет тестов. Невозможно проверить решение.", "error")
+                cursor.close()
+                return render_template(
+                    "problem.html", problem=problem, code_prefill=user_code, results=None, tags=tags, sidebar_tree=sidebar_tree
+                )
 
+            points_awarded = 0
+            try:
+                if passed:
+                    # Проверяем, решалась ли задача ранее (используем problem_test_results)
+                    prev_passed = execute_one(g.db,
+                        """
+                        SELECT 1 FROM problem_test_results 
+                        WHERE user_id=%s AND problem_id=%s AND status='passed' 
+                        AND id < (SELECT MAX(id) FROM problem_test_results WHERE user_id=%s AND problem_id=%s) 
+                        LIMIT 1
+                        """,
+                        (user_id, problem_id, user_id, problem_id),
+                    )
+                    if not prev_passed:
+                        # Начисляем очки за первую сдачу
+                        points_awarded = 100 if problem["difficulty"] == "Easy" else (200 if problem["difficulty"] == "Medium" else 300)
+                        cursor.execute("UPDATE users SET points = COALESCE(points,0) + %s WHERE id=%s", (points_awarded, user_id))
+                        flash(f"Задача решена! +{points_awarded} очков", "success")
+                
+                g.db.commit()
+            except Exception as e:
+                # Откатываем транзакцию при ошибке
+                g.db.rollback()
+                flash(f"Ошибка при сохранении результатов: {str(e)}", "error")
+            finally:
+                cursor.close()
+
+            # Добавляем информацию о начисленных очках в результаты
+            if judge_report:
+                judge_report["points_awarded"] = points_awarded
             results = judge_report  # type: ignore[assignment]
+            # После POST используем код, который только что отправили
+            code_prefill = user_code
+            
+            # Если решение успешное, получаем статистику других решений для графика
+            stats_for_chart = None
+            if results and results.get("passed"):
+                try:
+                    cursor = get_cursor(g.db)
+                    cursor.execute("""
+                        SELECT execution_time, memory_used
+                        FROM problem_test_results
+                        WHERE problem_id = %s AND status = 'passed' AND memory_used IS NOT NULL
+                        ORDER BY created_at DESC
+                        LIMIT 100
+                    """, (problem_id,))
+                    stats_data = cursor.fetchall()
+                    cursor.close()
+                    
+                    if stats_data:
+                        others_data = [
+                            {
+                                "execution_time": float(row["execution_time"] or 0),
+                                "memory_used": float(row["memory_used"] or 0)
+                            }
+                            for row in stats_data
+                        ]
+                        current_time = results.get("execution_time", 0.0)
+                        current_memory = results.get("memory_used", 0.0)
+                        
+                        # Вычисляем процентили и гистограммы
+                        time_percentile = 0
+                        memory_percentile = 0
+                        time_bins = []
+                        memory_bins = []
+                        
+                        if others_data:
+                            time_values = sorted([o["execution_time"] * 1000 for o in others_data])  # в ms
+                            memory_values = sorted([o["memory_used"] for o in others_data])
+                            
+                            # Вычисляем процентиль (сколько процентов решений хуже нашего)
+                            current_time_ms = current_time * 1000
+                            worse_time_count = sum(1 for t in time_values if t > current_time_ms)
+                            time_percentile = int((worse_time_count / len(time_values)) * 100) if time_values else 0
+                            
+                            worse_memory_count = sum(1 for m in memory_values if m > current_memory)
+                            memory_percentile = int((worse_memory_count / len(memory_values)) * 100) if memory_values else 0
+                            
+                            # Создаем bins для гистограмм (10 интервалов)
+                            if time_values:
+                                time_min, time_max = min(time_values), max(time_values)
+                                time_range = time_max - time_min
+                                if time_range > 0:
+                                    bin_width = time_range / 10
+                                    time_bins = [0] * 10
+                                    for t in time_values:
+                                        bin_idx = min(int((t - time_min) / bin_width), 9)
+                                        time_bins[bin_idx] += 1
+                                    time_bins_data = {
+                                        "min": time_min,
+                                        "max": time_max,
+                                        "bin_width": bin_width,
+                                        "counts": time_bins
+                                    }
+                                else:
+                                    time_bins_data = {"min": time_min, "max": time_max, "bin_width": 1, "counts": [len(time_values)]}
+                            else:
+                                time_bins_data = None
+                            
+                            if memory_values:
+                                mem_min, mem_max = min(memory_values), max(memory_values)
+                                mem_range = mem_max - mem_min
+                                if mem_range > 0:
+                                    bin_width = mem_range / 10
+                                    memory_bins = [0] * 10
+                                    for m in memory_values:
+                                        bin_idx = min(int((m - mem_min) / bin_width), 9)
+                                        memory_bins[bin_idx] += 1
+                                    memory_bins_data = {
+                                        "min": mem_min,
+                                        "max": mem_max,
+                                        "bin_width": bin_width,
+                                        "counts": memory_bins
+                                    }
+                                else:
+                                    memory_bins_data = {"min": mem_min, "max": mem_max, "bin_width": 1, "counts": [len(memory_values)]}
+                            else:
+                                memory_bins_data = None
+                        else:
+                            time_bins_data = None
+                            memory_bins_data = None
+                        
+                        stats_for_chart = {
+                            "current": {
+                                "execution_time": current_time,
+                                "memory_used": current_memory
+                            },
+                            "others": others_data,
+                            "time_percentile": time_percentile,
+                            "memory_percentile": memory_percentile,
+                            "time_bins": time_bins_data,
+                            "memory_bins": memory_bins_data,
+                            "others_count": len(others_data)
+                        }
+                except Exception as e:
+                    print(f"Ошибка при получении статистики для графика: {e}")
+                    stats_for_chart = None
+        else:
+            stats_for_chart = None
 
+        # Получаем комментарии к задаче с реакциями
+        comments_raw = execute_query(g.db,
+            """
+            SELECT c.id, c.user_id, c.content, c.created_at, c.updated_at,
+                   u.username, u.display_name, u.avatar_path,
+                   COALESCE(SUM(CASE WHEN cr.reaction_type = 'like' THEN 1 ELSE 0 END)::int, 0) as likes_count,
+                   COALESCE(SUM(CASE WHEN cr.reaction_type = 'dislike' THEN 1 ELSE 0 END)::int, 0) as dislikes_count
+            FROM problem_comments c
+            JOIN users u ON u.id = c.user_id
+            LEFT JOIN comment_reactions cr ON cr.comment_id = c.id
+            WHERE c.problem_id = %s
+            GROUP BY c.id, c.user_id, c.content, c.created_at, c.updated_at,
+                     u.username, u.display_name, u.avatar_path
+            ORDER BY c.created_at ASC
+            """,
+            (problem_id,),
+        )
+        
+        # Получаем реакции текущего пользователя для каждого комментария
+        comments = []
+        for comment in comments_raw:
+            user_reaction = None
+            if user_id:
+                reaction = execute_one(g.db,
+                    "SELECT reaction_type FROM comment_reactions WHERE comment_id = %s AND user_id = %s",
+                    (comment["id"], user_id),
+                )
+                if reaction:
+                    user_reaction = reaction["reaction_type"]
+            
+            comment_dict = dict(comment)
+            comment_dict["user_reaction"] = user_reaction
+            comments.append(comment_dict)
+        
         return render_template(
             "problem.html",
             problem=problem,
@@ -670,8 +996,175 @@ def create_app() -> Flask:
             results=results,
             tags=tags,
             sidebar_tree=sidebar_tree,
+            stats_for_chart=stats_for_chart,
+            comments=comments,
+            user_id=user_id,  # Передаем user_id для проверки авторизации в шаблоне
         )
 
+    @app.route("/comment/add", methods=["POST"])
+    def add_comment():
+        user_id = session.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Требуется авторизация"}), 401
+        
+        problem_id = request.form.get("problem_id")
+        content = request.form.get("content", "").strip()
+        
+        if not problem_id or not content:
+            flash("Комментарий не может быть пустым", "error")
+            return redirect(url_for("problem", problem_id=problem_id))
+        
+        try:
+            cursor = get_cursor(g.db)
+            cursor.execute(
+                """
+                INSERT INTO problem_comments (problem_id, user_id, content, created_at, updated_at)
+                VALUES (%s, %s, %s, NOW(), NOW())
+                """,
+                (problem_id, user_id, content),
+            )
+            g.db.commit()
+            cursor.close()
+            flash("Комментарий добавлен", "success")
+        except Exception as e:
+            g.db.rollback()
+            flash(f"Ошибка при добавлении комментария: {str(e)}", "error")
+        
+        return redirect(url_for("problem", problem_id=problem_id))
+    
+    @app.route("/comment/<int:comment_id>/delete", methods=["POST"])
+    def delete_comment(comment_id):
+        user_id = session.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Требуется авторизация"}), 401
+        
+        # Проверяем, что комментарий принадлежит пользователю
+        comment = execute_one(g.db,
+            "SELECT problem_id, user_id FROM problem_comments WHERE id = %s",
+            (comment_id,),
+        )
+        
+        if not comment:
+            flash("Комментарий не найден", "error")
+            return redirect(url_for("problems"))
+        
+        if comment["user_id"] != user_id:
+            flash("Вы не можете удалить этот комментарий", "error")
+            return redirect(url_for("problem", problem_id=comment["problem_id"]))
+        
+        try:
+            cursor = get_cursor(g.db)
+            cursor.execute("DELETE FROM problem_comments WHERE id = %s", (comment_id,))
+            g.db.commit()
+            cursor.close()
+            flash("Комментарий удален", "success")
+        except Exception as e:
+            g.db.rollback()
+            flash(f"Ошибка при удалении комментария: {str(e)}", "error")
+        
+        return redirect(url_for("problem", problem_id=comment["problem_id"]))
+    
+    @app.route("/comment/<int:comment_id>/edit", methods=["POST"])
+    def edit_comment(comment_id):
+        user_id = session.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Требуется авторизация"}), 401
+        
+        # Проверяем, что комментарий принадлежит пользователю
+        comment = execute_one(g.db,
+            "SELECT problem_id, user_id FROM problem_comments WHERE id = %s",
+            (comment_id,),
+        )
+        
+        if not comment:
+            return jsonify({"error": "Комментарий не найден"}), 404
+        
+        if comment["user_id"] != user_id:
+            return jsonify({"error": "Вы не можете редактировать этот комментарий"}), 403
+        
+        content = request.form.get("content", "").strip()
+        if not content:
+            return jsonify({"error": "Комментарий не может быть пустым"}), 400
+        
+        try:
+            cursor = get_cursor(g.db)
+            cursor.execute(
+                "UPDATE problem_comments SET content = %s, updated_at = NOW() WHERE id = %s",
+                (content, comment_id),
+            )
+            g.db.commit()
+            cursor.close()
+            return jsonify({"success": True, "content": content})
+        except Exception as e:
+            g.db.rollback()
+            return jsonify({"error": str(e)}), 500
+    
+    @app.route("/comment/<int:comment_id>/reaction", methods=["POST"])
+    def toggle_reaction(comment_id):
+        user_id = session.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Требуется авторизация"}), 401
+        
+        reaction_type = request.form.get("reaction_type")
+        if reaction_type not in ["like", "dislike"]:
+            return jsonify({"error": "Неверный тип реакции"}), 400
+        
+        # Проверяем существующую реакцию
+        existing = execute_one(g.db,
+            "SELECT reaction_type FROM comment_reactions WHERE comment_id = %s AND user_id = %s",
+            (comment_id, user_id),
+        )
+        
+        try:
+            cursor = get_cursor(g.db)
+            if existing:
+                if existing["reaction_type"] == reaction_type:
+                    # Удаляем реакцию, если пользователь нажал на ту же кнопку
+                    cursor.execute(
+                        "DELETE FROM comment_reactions WHERE comment_id = %s AND user_id = %s",
+                        (comment_id, user_id),
+                    )
+                else:
+                    # Меняем реакцию
+                    cursor.execute(
+                        "UPDATE comment_reactions SET reaction_type = %s WHERE comment_id = %s AND user_id = %s",
+                        (reaction_type, comment_id, user_id),
+                    )
+            else:
+                # Добавляем новую реакцию
+                cursor.execute(
+                    "INSERT INTO comment_reactions (comment_id, user_id, reaction_type) VALUES (%s, %s, %s)",
+                    (comment_id, user_id, reaction_type),
+                )
+            
+            g.db.commit()
+            cursor.close()
+            
+            # Получаем обновленные счетчики
+            likes = execute_one(g.db,
+                "SELECT COUNT(*) as count FROM comment_reactions WHERE comment_id = %s AND reaction_type = 'like'",
+                (comment_id,),
+            )
+            dislikes = execute_one(g.db,
+                "SELECT COUNT(*) as count FROM comment_reactions WHERE comment_id = %s AND reaction_type = 'dislike'",
+                (comment_id,),
+            )
+            
+            # Проверяем текущую реакцию пользователя
+            current_reaction = execute_one(g.db,
+                "SELECT reaction_type FROM comment_reactions WHERE comment_id = %s AND user_id = %s",
+                (comment_id, user_id),
+            )
+            
+            return jsonify({
+                "likes": likes["count"] if likes else 0,
+                "dislikes": dislikes["count"] if dislikes else 0,
+                "user_reaction": current_reaction["reaction_type"] if current_reaction else None,
+            })
+        except Exception as e:
+            g.db.rollback()
+            return jsonify({"error": str(e)}), 500
+    
     @app.route("/submissions")
     def submissions():
         user_id = session.get("user_id")
@@ -679,9 +1172,13 @@ def create_app() -> Flask:
             return redirect(url_for("login"))
         subs = execute_query(g.db,
             """
-            SELECT s.id, p.title AS problem_title, s.passed, s.created_at, p.difficulty
-            FROM solutions s JOIN real_leetcode_problems p ON p.problem_id = s.task_id 
-            WHERE s.user_id = %s ORDER BY s.created_at DESC, s.id DESC
+            SELECT ptr.id, p.problem_id, p.title AS problem_title, 
+                   CASE WHEN ptr.status='passed' THEN 1 ELSE 0 END as passed, 
+                   ptr.created_at, p.difficulty
+            FROM problem_test_results ptr 
+            JOIN leetcode_problems_with_tests p ON p.problem_id = ptr.problem_id 
+            WHERE ptr.user_id = %s 
+            ORDER BY ptr.created_at DESC, ptr.id DESC
             """,
             (user_id,),
         )
@@ -694,9 +1191,13 @@ def create_app() -> Flask:
             return redirect(url_for("login"))
         s = execute_one(g.db,
             """
-            SELECT s.id, s.user_id, s.task_id, s.code, s.passed, s.result_json, s.created_at, 
-            p.title AS problem_title, p.difficulty
-            FROM solutions s JOIN real_leetcode_problems p ON p.problem_id = s.task_id WHERE s.id = %s
+            SELECT ptr.id, ptr.user_id, ptr.problem_id as task_id, ptr.solution_code as code, 
+                   CASE WHEN ptr.status='passed' THEN 1 ELSE 0 END as passed, 
+                   ptr.test_results::text as result_json, ptr.created_at, 
+                   p.title AS problem_title, p.difficulty
+            FROM problem_test_results ptr 
+            JOIN leetcode_problems_with_tests p ON p.problem_id = ptr.problem_id 
+            WHERE ptr.id = %s
             """,
             (solution_id,),
         )
@@ -707,7 +1208,16 @@ def create_app() -> Flask:
             flash("Нет доступа к этой отправке", "error")
             return redirect(url_for("submissions"))
         try:
-            result = json.loads(s["result_json"]) if s["result_json"] else None
+            # test_results может быть jsonb или строкой
+            result_json = s.get("result_json")
+            if result_json:
+                if isinstance(result_json, str):
+                    result = json.loads(result_json)
+                else:
+                    # Если это уже dict (jsonb возвращается как dict)
+                    result = result_json
+            else:
+                result = None
         except Exception:  # noqa: BLE001
             result = None
         return render_template("submission_detail.html", submission=s, result=result)
@@ -810,7 +1320,8 @@ def judge_user_code(
     results: List[Dict[str, object]] = []
     all_passed = True
     for idx, (input_text, expected_output) in enumerate(testcases, start=1):
-        outcome = _run_with_timeout(user_code, input_text, time_limit_sec)
+        # Старая функция использует простой подход без входных данных
+        outcome = _run_with_timeout(user_code, time_limit_sec)
         if outcome.get("timeout"):
             case_res = {
                 "case": idx,
@@ -841,6 +1352,154 @@ def judge_user_code(
         results.append(case_res)
 
     return {"passed": all_passed, "results": results}
+
+
+def judge_user_code_with_tests(
+    user_code: str, tests: List[Dict], language: str = "python3", time_limit_sec: float = 2.0
+) -> Dict[str, object]:
+    """
+    Выполняет тестирование кода пользователя с использованием тестов из новой таблицы.
+    
+    Args:
+        user_code: Код пользователя
+        tests: Список тестов в формате [{"input": "...", "output": ...}, ...]
+        language: Язык программирования
+        time_limit_sec: Лимит времени на выполнение одного теста
+    
+    Returns:
+        Словарь с результатами тестирования
+    """
+    import ast
+    
+    results: List[Dict[str, object]] = []
+    all_passed = True
+    total_execution_time = 0.0
+    max_memory_used = 0.0
+    
+    for idx, test in enumerate(tests, start=1):
+        test_input = test.get("input", "")
+        expected_output = test.get("output")
+        
+        # Создаем тестовый код для выполнения
+        if language == "python3":
+            # Парсим входные данные (массив в формате строки)
+            try:
+                # Парсим входной массив
+                input_array = ast.literal_eval(test_input)
+                
+                # Пытаемся найти метод в классе Solution
+                import re
+                method_match = re.search(r'def\s+(\w+)\s*\(', user_code)
+                method_name = method_match.group(1) if method_match else "isSymmetric"
+                
+                # Создаем тестовый код
+                test_code = f"""
+{user_code}
+
+# Выполнение теста
+if __name__ == "__main__":
+    solution = Solution()
+    result = solution.{method_name}({input_array})
+    print(result)
+"""
+            except Exception as e:
+                case_res = {
+                    "case": idx,
+                    "status": "RUNTIME_ERROR",
+                    "message": f"Ошибка парсинга входных данных: {str(e)}",
+                    "input": test_input,
+                    "expected": expected_output,
+                }
+                results.append(case_res)
+                all_passed = False
+                continue
+        else:
+            # Для других языков пока используем простой подход
+            test_code = user_code
+        
+        # Выполняем код
+        outcome = _run_with_timeout(test_code, time_limit_sec)
+        execution_time = outcome.get("execution_time", 0) / 1000.0  # Преобразуем в секунды
+        memory_mb = outcome.get("memory_mb", 0.0)
+        total_execution_time += execution_time
+        if memory_mb > max_memory_used:
+            max_memory_used = memory_mb
+        
+        # Проверяем таймаут (если время выполнения больше лимита или есть ошибка таймаута)
+        if execution_time > time_limit_sec or "Превышено время" in outcome.get("error", ""):
+            case_res = {
+                "case": idx,
+                "status": "TIMEOUT",
+                "message": f"Превышено время {time_limit_sec:.1f}s",
+                "input": test_input,
+                "expected": expected_output,
+            }
+            all_passed = False
+        elif not outcome.get("ok"):
+            case_res = {
+                "case": idx,
+                "status": "RUNTIME_ERROR",
+                "message": outcome.get("error", "Неизвестная ошибка"),
+                "traceback": outcome.get("traceback"),
+                "input": test_input,
+                "expected": expected_output,
+            }
+            all_passed = False
+        else:
+            # Парсим результат
+            actual_output_str = (outcome.get("output") or "").strip()
+            try:
+                # Пробуем преобразовать в Python объект
+                if actual_output_str.lower() in ("true", "false"):
+                    actual_output = actual_output_str.lower() == "true"
+                else:
+                    actual_output = ast.literal_eval(actual_output_str)
+                
+                # Сравниваем результаты
+                if actual_output == expected_output:
+                    case_res = {
+                        "case": idx,
+                        "status": "OK",
+                        "input": test_input,
+                        "expected": expected_output,
+                        "actual": actual_output,
+                        "execution_time": execution_time,
+                        "memory_mb": memory_mb,
+                    }
+                else:
+                    case_res = {
+                        "case": idx,
+                        "status": "WA",
+                        "message": f"Ожидалось: {expected_output!r}, получено: {actual_output!r}",
+                        "input": test_input,
+                        "expected": expected_output,
+                        "actual": actual_output,
+                        "execution_time": execution_time,
+                    }
+                    all_passed = False
+            except Exception as e:
+                case_res = {
+                    "case": idx,
+                    "status": "WA",
+                    "message": f"Ошибка парсинга результата: {str(e)}. Получено: {actual_output_str!r}",
+                    "input": test_input,
+                    "expected": expected_output,
+                    "actual": actual_output_str,
+                    "execution_time": execution_time,
+                }
+                all_passed = False
+        
+        results.append(case_res)
+    
+    return {
+        "passed": all_passed,
+        "results": results,
+        "passed_tests": sum(1 for r in results if r.get("status") == "OK"),
+        "total_tests": len(results),
+        "execution_time": total_execution_time,
+        "memory_used": max_memory_used,
+        "status": "passed" if all_passed else "failed",
+    }
 
 
 def _target_exec(code: str, input_text: str, q: Queue) -> None:
@@ -1073,21 +1732,26 @@ def _run_compiled_with_timeout(code: str, language: str, time_limit_sec: float) 
         return {"ok": False, "error": f"Ошибка выполнения: {str(e)}", "execution_time": 0}
 
 def _run_with_timeout(code: str, time_limit_sec: float) -> Dict[str, object]:
-    """Выполнение Python кода с таймаутом"""
+    """Выполнение Python кода с таймаутом и измерением памяти"""
     import subprocess
     import tempfile
     import time
     
-    # Отладочная информация
-    print(f"DEBUG: Starting Python execution...")
-    
     try:
+        # Пытаемся импортировать psutil для измерения памяти
+        try:
+            import psutil
+            use_psutil = True
+        except ImportError:
+            use_psutil = False
+        
         # Создаем временный файл для Python кода с кодировкой UTF-8
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
             f.write(code)
             temp_file = f.name
         
         start_time = time.time()
+        max_memory_mb = 0.0
         
         # Выполняем код через Python с правильной кодировкой
         env = os.environ.copy()
@@ -1095,40 +1759,59 @@ def _run_with_timeout(code: str, time_limit_sec: float) -> Dict[str, object]:
         env['PYTHONUTF8'] = '1'
         
         # Выполняем код через Python
-        result = subprocess.run(
+        process = subprocess.Popen(
             ['python', '-u', temp_file],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=time_limit_sec,
             encoding='utf-8',
             errors='replace',
             env=env
         )
         
-        stdout = result.stdout
-        stderr = result.stderr
-        return_code = result.returncode
+        # Мониторим использование памяти во время выполнения
+        if use_psutil:
+            try:
+                proc = psutil.Process(process.pid)
+                while process.poll() is None:
+                    try:
+                        mem_info = proc.memory_info()
+                        memory_mb = mem_info.rss / 1024 / 1024  # RSS в MB
+                        if memory_mb > max_memory_mb:
+                            max_memory_mb = memory_mb
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        break
+                    time.sleep(0.01)  # Проверяем каждые 10ms
+            except Exception:
+                pass
+        
+        try:
+            stdout, stderr = process.communicate(timeout=time_limit_sec)
+            return_code = process.returncode
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            return_code = -1
         
         execution_time = int((time.time() - start_time) * 1000)
         
-        # Отладочная информация
-        print(f"DEBUG: Execution completed. Return code: {result.returncode}")
-        print(f"DEBUG: Stdout: {result.stdout[:100]}...")
-        print(f"DEBUG: Stderr: {result.stderr[:100]}...")
-        
         # Удаляем временный файл
-        os.unlink(temp_file)
+        try:
+            os.unlink(temp_file)
+        except Exception:
+            pass
         
         return {
-            "ok": result.returncode == 0,
-            "output": result.stdout,
-            "error": result.stderr if result.returncode != 0 else "",
-            "execution_time": execution_time
+            "ok": return_code == 0,
+            "output": stdout,
+            "error": stderr if return_code != 0 else "",
+            "execution_time": execution_time,
+            "memory_mb": round(max_memory_mb, 2) if max_memory_mb > 0 else 0.0
         }
     except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "Превышено время выполнения", "execution_time": int(time_limit_sec * 1000)}
+        return {"ok": False, "error": "Превышено время выполнения", "execution_time": int(time_limit_sec * 1000), "memory_mb": 0.0}
     except Exception as e:
-        return {"ok": False, "error": f"Ошибка выполнения: {str(e)}", "execution_time": 0}
+        return {"ok": False, "error": f"Ошибка выполнения: {str(e)}", "execution_time": 0, "memory_mb": 0.0}
 
 
 app = create_app()

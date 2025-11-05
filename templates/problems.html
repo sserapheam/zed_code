@@ -27,25 +27,39 @@
       
     <div class="problems-list" id="problems-list">
       {% for p in problems %}
-        <div class="problem-item">
+        <div class="problem-item {% if p['last_passed'] is not none and p['last_passed'] == 1 %}solved-problem{% endif %}">
           <div class="problem-content">
             <div class="problem-title">
-              <a href="{{ url_for('problem_detail', problem_id=p['problem_id']) }}" class="title-link">
+              <a href="{{ url_for('problem', problem_id=p['problem_id']) }}" class="title-link">
+                {% if p['last_passed'] is not none and p['last_passed'] == 1 %}
+                  <span class="solved-icon" style="color: #28a745; margin-right: 0.5rem; font-size: 1.1em;">✓</span>
+                {% endif %}
                 {{ p['problem_id'] }}. {{ p['title'] }}
               </a>
             </div>
             <div class="problem-meta">
               <span class="difficulty {{ p['difficulty'] or 'Easy' }}">{{ p['difficulty'] or 'Easy' }}</span>
-              {% if p['last_passed'] is not none %}
-                <span class="status {{ 'solved' if p['last_passed'] else 'attempted' }}">
-                  {% if p['last_passed'] %}✓ Решено{% else %}✗ Попытка{% endif %}
+              {% if p['topic_tags'] %}
+                <div class="problem-tags">
+                  {% for tag in p['topic_tags'][:2] %}
+                    <span class="tag">{{ tag }}</span>
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if p['last_passed'] is not none and p['last_passed'] == 1 %}
+                <span class="status solved">
+                  ✓ Решено
+                </span>
+              {% elif p['last_passed'] is not none and p['last_passed'] == 0 %}
+                <span class="status attempted">
+                  ✗ Попытка
                 </span>
               {% endif %}
             </div>
           </div>
           <div class="problem-actions">
-            <a href="{{ url_for('problem_detail', problem_id=p['problem_id']) }}" class="btn-solve">
-              {% if p['last_passed'] %}Повторить{% else %}Решить{% endif %}
+            <a href="{{ url_for('problem', problem_id=p['problem_id']) }}" class="btn-solve">
+              {% if p['last_passed'] is not none and p['last_passed'] == 1 %}Повторить{% else %}Решить{% endif %}
             </a>
           </div>
         </div>
@@ -95,10 +109,13 @@
     <!-- Список всех задач -->
     <div class="problems-list" id="problems-list">
       {% for p in all_problems %}
-        <div class="problem-item">
+        <div class="problem-item {% if p['last_passed'] is not none and p['last_passed'] == 1 %}solved-problem{% endif %}">
           <div class="problem-content">
             <div class="problem-title">
-              <a href="{{ url_for('problem_detail', problem_id=p['problem_id']) }}" class="title-link">
+              <a href="{{ url_for('problem', problem_id=p['problem_id']) }}" class="title-link">
+                {% if p['last_passed'] is not none and p['last_passed'] == 1 %}
+                  <span class="solved-icon" style="color: #28a745; margin-right: 0.5rem; font-size: 1.1em;">✓</span>
+                {% endif %}
                 {{ p['problem_id'] }}. {{ p['title'] }}
               </a>
             </div>
@@ -111,16 +128,20 @@
                   {% endfor %}
                 </div>
               {% endif %}
-              {% if p['last_passed'] is not none %}
-                <span class="status {{ 'solved' if p['last_passed'] else 'attempted' }}">
-                  {% if p['last_passed'] %}✓ Решено{% else %}✗ Попытка{% endif %}
+              {% if p['last_passed'] is not none and p['last_passed'] == 1 %}
+                <span class="status solved">
+                  ✓ Решено
+                </span>
+              {% elif p['last_passed'] is not none and p['last_passed'] == 0 %}
+                <span class="status attempted">
+                  ✗ Попытка
                 </span>
               {% endif %}
             </div>
           </div>
           <div class="problem-actions">
-            <a href="{{ url_for('problem_detail', problem_id=p['problem_id']) }}" class="btn-solve">
-              {% if p['last_passed'] %}Повторить{% else %}Решить{% endif %}
+            <a href="{{ url_for('problem', problem_id=p['problem_id']) }}" class="btn-solve">
+              {% if p['last_passed'] is not none and p['last_passed'] == 1 %}Повторить{% else %}Решить{% endif %}
             </a>
           </div>
         </div>
@@ -236,13 +257,16 @@ async function loadMoreProblems() {
 // Создание элемента задачи
 function createProblemElement(problem) {
     const div = document.createElement('div');
-    div.className = 'problem-item';
+    div.className = `problem-item ${problem.last_passed ? 'solved-problem' : ''}`;
     
-    const statusHtml = problem.last_passed !== null 
-        ? `<span class="status ${problem.last_passed ? 'solved' : 'attempted'}">
-             ${problem.last_passed ? '✓ Решено' : '✗ Попытка'}
-           </span>`
-        : '';
+    const isSolved = problem.last_passed !== null && problem.last_passed === 1;
+    const hasAttempt = problem.last_passed !== null && problem.last_passed === 0;
+    
+    const statusHtml = isSolved
+        ? `<span class="status solved">✓ Решено</span>`
+        : (hasAttempt 
+            ? `<span class="status attempted">✗ Попытка</span>`
+            : '');
     
     const tagsHtml = problem.topic_tags && problem.topic_tags.length > 0
         ? `<div class="problem-tags">
@@ -250,11 +274,17 @@ function createProblemElement(problem) {
            </div>`
         : '';
     
+    const solvedIcon = isSolved
+        ? '<span class="solved-icon" style="color: #28a745; margin-right: 0.5rem; font-size: 1.1em;">✓</span>'
+        : '';
+    
+    div.className = `problem-item ${isSolved ? 'solved-problem' : ''}`;
+    
     div.innerHTML = `
         <div class="problem-content">
             <div class="problem-title">
                 <a href="/problem/${problem.problem_id}" class="title-link">
-                    ${problem.problem_id}. ${problem.title}
+                    ${solvedIcon}${problem.problem_id}. ${problem.title}
                 </a>
             </div>
             <div class="problem-meta">
@@ -265,7 +295,7 @@ function createProblemElement(problem) {
         </div>
         <div class="problem-actions">
             <a href="/problem/${problem.problem_id}" class="btn-solve">
-                ${problem.last_passed ? 'Повторить' : 'Решить'}
+                ${isSolved ? 'Повторить' : 'Решить'}
             </a>
         </div>
     `;

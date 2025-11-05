@@ -20,7 +20,7 @@
       <h2>Результаты поиска ({{ results|length }})</h2>
       <div class="cards tasks">
         {% for p in results %}
-          <a class="task-card {{ p['difficulty'] or 'Easy' }}" href="{{ url_for('problem_detail', problem_id=p['problem_id']) }}">
+          <a class="task-card {{ p['difficulty'] or 'Easy' }}" href="{{ url_for('problem', problem_id=p['problem_id']) }}">
             <div class="task-card-top">
               <span class="badge {{ p['difficulty'] or 'Easy' }}">{{ p['difficulty'] or 'Easy' }}</span>
             </div>

@@ -244,6 +244,8 @@ int main() {
       foldGutter: true,
       gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
       direction: "ltr",
+      textWrapping: true,
+      scrollbarStyle: "native",
       extraKeys: {
         "Tab": function(cm) {
           if (cm.somethingSelected()) {
@@ -260,6 +262,12 @@ int main() {
     
     // Устанавливаем начальный код
     codeEditor.setValue(starterCodes[currentLanguage]);
+    
+    // Принудительно обновляем редактор
+    setTimeout(() => {
+      codeEditor.refresh();
+      codeEditor.setCursor(0, 0);
+    }, 10);
   }
 
   // Переключение языка
@@ -284,6 +292,7 @@ int main() {
     else if (selectedLang === 'java' || selectedLang === 'c' || selectedLang === 'csharp' || selectedLang === 'cpp') mode = 'text/x-java';
     
     if (codeEditor) {
+      // Сначала обновляем режим
       codeEditor.setOption('mode', mode);
       
       // Загружаем сохраненный код или стартовый код
@@ -294,8 +303,12 @@ int main() {
         codeEditor.setValue(starterCodes[selectedLang]);
       }
       
-      // Обновляем редактор
-      codeEditor.refresh();
+      // Принудительно обновляем редактор и сбрасываем позицию
+      setTimeout(() => {
+        codeEditor.refresh();
+        codeEditor.setCursor(0, 0); // Сбрасываем курсор в начало
+        codeEditor.clearHistory(); // Очищаем историю изменений
+      }, 10);
     }
   }
 
