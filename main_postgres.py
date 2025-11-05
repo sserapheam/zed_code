@@ -49,6 +49,14 @@ def create_app() -> Flask:
     app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET", "dev-secret-change-me")
     app.config["UPLOAD_FOLDER"] = os.path.join(os.path.dirname(__file__), "static", "uploads")
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+    
+    # Настройка логирования для Docker операций
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
     # Функция для обработки HTML-сущностей и форматирования
     def clean_html_entities(text):
@@ -581,6 +589,28 @@ def create_app() -> Flask:
         top = execute_query(g.db, "SELECT username, display_name, avatar_path, points FROM users ORDER BY points DESC, id ASC LIMIT 20"
         )
         return render_template("leaderboard.html", top=top)
+    
+    @app.route("/api/docker/stats")
+    def docker_stats():
+        """API эндпоинт для получения статистики Docker пула"""
+        user_id = session.get("user_id")
+        if not user_id:
+            return jsonify({"error": "unauthorized"}), 401
+        
+        use_docker = os.environ.get("USE_DOCKER", "false").lower() in ("true", "1", "yes")
+        if not use_docker:
+            return jsonify({"error": "Docker режим отключен"}), 400
+        
+        try:
+            from docker_executor_pool import get_executor_pool
+            pool = get_executor_pool()
+            stats = pool.get_stats()
+            return jsonify({
+                "success": True,
+                "stats": stats
+            })
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
     @app.route("/problem/<int:problem_id>", methods=["GET", "POST"])
     def problem(problem_id: int):
@@ -745,6 +775,9 @@ def create_app() -> Flask:
                     passed = 1 if judge_report.get("passed") else 0
                     
                     # Сохраняем результаты в новую таблицу
+                    # Конвертируем специальные float значения для JSON
+                    results_for_json = convert_special_floats_for_json(judge_report.get("results", []))
+                    
                     cursor.execute(
                         """
                         INSERT INTO problem_test_results(
@@ -757,7 +790,7 @@ def create_app() -> Flask:
                             problem_id,
                             user_id,
                             user_code,
-                            json.dumps(judge_report.get("results", []), ensure_ascii=False),
+                            json.dumps(results_for_json, ensure_ascii=False),
                             judge_report.get("passed_tests", 0),
                             judge_report.get("total_tests", 0),
                             judge_report.get("execution_time", 0.0),
@@ -1314,6 +1347,30 @@ def execute_one(conn, query, params=None):
     return result
 
 
+def convert_special_floats_for_json(obj):
+    """
+    Рекурсивно конвертирует специальные float значения (inf, -inf, nan) 
+    в строковое представление для корректной сериализации в JSON
+    """
+    import math
+    
+    if isinstance(obj, float):
+        if math.isnan(obj):
+            return "NaN"
+        elif math.isinf(obj):
+            return "Infinity" if obj > 0 else "-Infinity"
+        else:
+            return obj
+    elif isinstance(obj, dict):
+        return {key: convert_special_floats_for_json(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_special_floats_for_json(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(convert_special_floats_for_json(item) for item in obj)
+    else:
+        return obj
+
+
 def judge_user_code(
     user_code: str, testcases: List[Tuple[str, str]], time_limit_sec: float = 2.0
 ) -> Dict[str, object]:
@@ -1370,6 +1427,7 @@ def judge_user_code_with_tests(
         Словарь с результатами тестирования
     """
     import ast
+    import math
     
     results: List[Dict[str, object]] = []
     all_passed = True
@@ -1385,12 +1443,33 @@ def judge_user_code_with_tests(
             # Парсим входные данные (массив в формате строки)
             try:
                 # Парсим входной массив
-                input_array = ast.literal_eval(test_input)
+                # Проверяем, что test_input - строка и не пустая
+                if not isinstance(test_input, str):
+                    test_input = str(test_input)
+                
+                # Убираем лишние пробелы
+                test_input = test_input.strip()
+                
+                # Пробуем распарсить через ast.literal_eval
+                try:
+                    input_array = ast.literal_eval(test_input)
+                except (ValueError, SyntaxError) as e:
+                    # Если ast.literal_eval не сработал, пробуем JSON
+                    try:
+                        import json
+                        input_array = json.loads(test_input)
+                    except json.JSONDecodeError:
+                        # Если и JSON не сработал, передаем как строку
+                        raise ValueError(f"Не удалось распарсить входные данные: {test_input[:100]}. Ошибка: {str(e)}")
                 
                 # Пытаемся найти метод в классе Solution
                 import re
                 method_match = re.search(r'def\s+(\w+)\s*\(', user_code)
-                method_name = method_match.group(1) if method_match else "isSymmetric"
+                method_name = method_match.group(1) if method_match else "solve"
+                
+                # Форматируем входные данные для вставки в код
+                # Используем repr для правильного форматирования
+                input_repr = repr(input_array)
                 
                 # Создаем тестовый код
                 test_code = f"""
@@ -1399,14 +1478,14 @@ def judge_user_code_with_tests(
 # Выполнение теста
 if __name__ == "__main__":
     solution = Solution()
-    result = solution.{method_name}({input_array})
+    result = solution.{method_name}({input_repr})
     print(result)
 """
             except Exception as e:
                 case_res = {
                     "case": idx,
                     "status": "RUNTIME_ERROR",
-                    "message": f"Ошибка парсинга входных данных: {str(e)}",
+                    "message": f"Ошибка парсинга входных данных: {str(e)}. Тип: {type(test_input)}, Значение: {repr(test_input)[:100]}",
                     "input": test_input,
                     "expected": expected_output,
                 }
@@ -1448,15 +1527,58 @@ if __name__ == "__main__":
         else:
             # Парсим результат
             actual_output_str = (outcome.get("output") or "").strip()
+            
+            # Если вывод пустой, это ошибка
+            if not actual_output_str:
+                case_res = {
+                    "case": idx,
+                    "status": "WA",
+                    "message": f"Пустой вывод. Ожидалось: {expected_output!r}",
+                    "input": test_input,
+                    "expected": expected_output,
+                    "actual": "",
+                    "execution_time": execution_time,
+                }
+                all_passed = False
+                results.append(case_res)
+                continue
+            
             try:
                 # Пробуем преобразовать в Python объект
+                # Обрабатываем True/False как строки
                 if actual_output_str.lower() in ("true", "false"):
                     actual_output = actual_output_str.lower() == "true"
+                elif actual_output_str.lower() in ("none", "null"):
+                    actual_output = None
+                elif actual_output_str.lower() in ("inf", "infinity"):
+                    # Обрабатываем бесконечность
+                    actual_output = float('inf')
+                elif actual_output_str.lower() in ("-inf", "-infinity"):
+                    # Обрабатываем минус бесконечность
+                    actual_output = float('-inf')
+                elif actual_output_str.lower() == "nan":
+                    # Обрабатываем NaN
+                    actual_output = float('nan')
                 else:
+                    # Пробуем парсить как Python литерал
                     actual_output = ast.literal_eval(actual_output_str)
                 
                 # Сравниваем результаты
-                if actual_output == expected_output:
+                # Специальная обработка для NaN (NaN != NaN в Python)
+                is_equal = False
+                if isinstance(actual_output, float) and isinstance(expected_output, float):
+                    # Если оба NaN, считаем равными
+                    if math.isnan(actual_output) and math.isnan(expected_output):
+                        is_equal = True
+                    # Если оба бесконечности одного знака
+                    elif math.isinf(actual_output) and math.isinf(expected_output):
+                        is_equal = (actual_output > 0) == (expected_output > 0)
+                    else:
+                        is_equal = actual_output == expected_output
+                else:
+                    is_equal = actual_output == expected_output
+                
+                if is_equal:
                     case_res = {
                         "case": idx,
                         "status": "OK",
@@ -1731,8 +1853,281 @@ def _run_compiled_with_timeout(code: str, language: str, time_limit_sec: float) 
     except Exception as e:
         return {"ok": False, "error": f"Ошибка выполнения: {str(e)}", "execution_time": 0}
 
+def _run_with_timeout_docker(code: str, time_limit_sec: float) -> Dict[str, object]:
+    """Выполнение Python кода в Docker контейнере с ограничениями (использует пул контейнеров)"""
+    import logging
+    
+    # Настройка логирования
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Используем пул контейнеров для переиспользования
+        from docker_executor_pool import get_executor_pool
+        
+        pool = get_executor_pool()
+        logger.debug("🔄 Используем пул контейнеров для выполнения кода")
+        
+        return pool.execute_code(code, time_limit_sec)
+        
+    except ImportError:
+        # Если пул недоступен, используем старый метод
+        logger.warning("⚠️ Пул контейнеров недоступен, используем старый метод создания контейнеров")
+        return _run_with_timeout_docker_legacy(code, time_limit_sec)
+
+def _run_with_timeout_docker_legacy(code: str, time_limit_sec: float) -> Dict[str, object]:
+    """Выполнение Python кода в Docker контейнере с ограничениями (старый метод - создает новый контейнер)"""
+    from docker import DockerClient
+    from docker import errors as docker_errors
+    import json
+    import time
+    import logging
+    
+    # Настройка логирования
+    logger = logging.getLogger(__name__)
+    
+    start_time = time.time()
+    
+    try:
+        # Подключаемся к Docker
+        client = DockerClient.from_env()
+        logger.info("🔌 Подключение к Docker...")
+        
+        # Используем volumes для передачи кода через файл (более надежно)
+        import tempfile
+        temp_dir = tempfile.mkdtemp()
+        code_file = os.path.join(temp_dir, "code.py")
+        with open(code_file, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(code)
+        
+        # Логируем для отладки
+        logger.info(f"📝 Код для выполнения (длина: {len(code)}, первые 300 символов):\n{code[:300]}")
+        logger.info(f"📁 Временный файл создан: {code_file}, размер: {os.path.getsize(code_file)} байт")
+        
+        # Проверяем содержимое файла перед отправкой
+        with open(code_file, 'r', encoding='utf-8') as f:
+            file_content_check = f.read()
+            if file_content_check != code:
+                logger.error(f"❌ Содержимое файла не совпадает с кодом! Файл: {len(file_content_check)} байт, Код: {len(code)} байт")
+        
+        # Проверяем, нужно ли оставлять контейнеры для отладки
+        auto_remove_env = os.environ.get("DOCKER_AUTO_REMOVE", "true").strip().lower()
+        auto_remove = auto_remove_env not in ("false", "0", "no")
+        
+        logger.info(f"📦 Запуск контейнера zedcode-python:latest (timeout: {time_limit_sec}с, auto_remove: {auto_remove})...")
+        logger.info(f"   DOCKER_AUTO_REMOVE={auto_remove_env} -> auto_remove={auto_remove}")
+        
+        container_id = None
+        container = None
+        try:
+            # В docker 7.x timeout был удален из run(), используем create() + start() + wait()
+            timeout_seconds = int(time_limit_sec) + 2
+            
+            # Создаем контейнер
+            # Используем cat для передачи содержимого файла в stdin runner.py
+            container = client.containers.create(
+                image="zedcode-python:latest",
+                command=["sh", "-c", "cat /tmp/code.py | python -u /app/runner.py"],
+                volumes={temp_dir: {'bind': '/tmp', 'mode': 'ro'}},
+                mem_limit="256m",  # Максимум 256MB памяти
+                cpu_period=100000,
+                cpu_quota=int(50000 * time_limit_sec),  # Ограничение CPU
+                network_disabled=True,  # Отключаем сеть
+                read_only=True  # Только чтение файловой системы
+            )
+            container_id = container.id
+            logger.info(f"📋 Контейнер создан (ID: {container_id[:12]})")
+            
+            # Запускаем контейнер
+            container.start()
+            
+            # Ждем завершения с таймаутом
+            try:
+                exit_status = container.wait(timeout=timeout_seconds)
+                exit_code = exit_status.get("StatusCode", 0) if isinstance(exit_status, dict) else exit_status
+            except Exception as wait_error:
+                # Если таймаут, останавливаем контейнер
+                logger.warning(f"⚠️ Таймаут выполнения (>{timeout_seconds}с), останавливаем контейнер...")
+                try:
+                    container.stop(timeout=1)
+                except Exception:
+                    pass
+                raise wait_error
+            
+            # Получаем вывод
+            container_output = container.logs(stdout=True, stderr=True)
+            
+            # Логируем сырой вывод для отладки
+            output_preview = container_output.decode('utf-8') if isinstance(container_output, bytes) else str(container_output)
+            logger.info(f"📤 Сырой вывод контейнера (длина: {len(output_preview)}, полный): {output_preview}")
+            
+            # Проверяем, что файл существует и читается
+            if not output_preview or len(output_preview.strip()) == 0:
+                logger.error(f"❌ Пустой вывод контейнера! Проверяем файл...")
+                # Пытаемся проверить содержимое файла через контейнер (если он еще существует)
+                if not auto_remove:
+                    try:
+                        # Проверяем, что файл существует в контейнере
+                        inspect_result = container.exec_run("cat /tmp/code.py", workdir="/tmp")
+                        logger.error(f"   Содержимое файла в контейнере: {inspect_result.output.decode('utf-8') if isinstance(inspect_result.output, bytes) else str(inspect_result.output)[:500]}")
+                    except Exception as e:
+                        logger.error(f"   Не удалось проверить файл: {e}")
+            
+            # НЕ удаляем контейнер сразу - нужно проверить вывод
+            # Удалим его после парсинга результата
+            logger.info("Контейнер успешно выполнен")
+        except Exception as container_error:
+            # Если контейнер создался, но произошла ошибка, очищаем его
+            if container is not None:
+                try:
+                    if not auto_remove:
+                        logger.warning(f"⚠️ Контейнер {container_id[:12]} останется для отладки")
+                    else:
+                        container.remove(force=True)
+                except Exception:
+                    pass
+            raise container_error
+        finally:
+            # Удаляем временный файл
+            try:
+                os.unlink(code_file)
+                os.rmdir(temp_dir)
+            except Exception:
+                pass
+        
+        execution_time = int((time.time() - start_time) * 1000)
+        logger.info(f"⏱️ Время выполнения: {execution_time}ms")
+        
+        # Если контейнеры не удаляются автоматически, логируем информацию
+        if not auto_remove:
+            try:
+                # Пытаемся найти последние контейнеры zedcode
+                containers = client.containers.list(all=True, filters={"ancestor": "zedcode-python:latest"}, limit=3)
+                if containers:
+                    logger.info(f"📋 Найдено контейнеров zedcode: {len(containers)}")
+                    for c in containers[:3]:
+                        logger.info(f"   - ID: {c.id[:12]}, Status: {c.status}, Created: {c.attrs.get('Created', 'N/A')}")
+                else:
+                    logger.warning("⚠️  Контейнеры не найдены (возможно, были удалены)")
+            except Exception as e:
+                logger.debug(f"Не удалось получить список контейнеров: {e}")
+        
+        # Парсим JSON ответ от runner.py
+        try:
+            output_text = container_output.decode('utf-8') if isinstance(container_output, bytes) else str(container_output)
+            # Убираем возможные лишние символы в начале/конце
+            output_text = output_text.strip()
+            
+            # Логируем перед парсингом
+            logger.info(f"📋 Текст для парсинга JSON (длина: {len(output_text)}, первые 500 символов): {output_text[:500]}")
+            
+            if not output_text or len(output_text.strip()) == 0:
+                logger.error(f"❌ Пустой вывод контейнера!")
+                raise Exception("Пустой вывод контейнера")
+            
+            result = json.loads(output_text)
+            logger.info(f"📊 Распарсенный результат: ok={result.get('ok')}, stdout_len={len(result.get('stdout', ''))}, error={result.get('error')}")
+            
+            # Извлекаем stdout из результата runner.py
+            stdout = result.get("stdout", "") or ""
+            # Если stdout пустой, пробуем получить из output
+            if not stdout:
+                stdout = result.get("output", "")
+            
+            # Логируем для отладки если stdout пустой
+            if not stdout:
+                logger.error(f"❌ stdout пустой! Полный результат runner.py: {result}")
+                logger.error(f"   Код, который выполнялся (первые 300 символов): {code[:300]}")
+                logger.error(f"   ok={result.get('ok')}, error={result.get('error')}, stderr={result.get('stderr')}")
+                logger.error(f"   Сырой вывод: {output_text[:500]}")
+            
+            # Удаляем контейнер после успешного получения результата
+            if auto_remove and container is not None:
+                try:
+                    container.remove()
+                except Exception:
+                    pass
+            
+            return {
+                "ok": result.get("ok", False),
+                "output": stdout,  # Это будет выводиться в judge_user_code_with_tests
+                "error": result.get("error", "") or result.get("stderr", ""),
+                "execution_time": int(result.get("execution_time", 0) * 1000) if result.get("execution_time") else execution_time,
+                "memory_mb": round(result.get("memory_used", 0), 2)
+            }
+        except (json.JSONDecodeError, AttributeError) as e:
+            # Если не удалось распарсить JSON, возвращаем как есть
+            output_text = container_output.decode('utf-8') if isinstance(container_output, bytes) else str(container_output)
+            logger.error(f"❌ Ошибка парсинга JSON: {str(e)}")
+            logger.error(f"   Сырой вывод: {output_text}")
+            
+            # Удаляем контейнер после ошибки
+            if auto_remove and container is not None:
+                try:
+                    container.remove()
+                except Exception:
+                    pass
+            
+            return {
+                "ok": False,
+                "output": output_text,
+                "error": f"Ошибка парсинга ответа: {str(e)}. Ответ: {output_text[:200]}",
+                "execution_time": execution_time,
+                "memory_mb": 0.0
+            }
+            
+    except docker_errors.ImageNotFound:
+        # Если образ не найден, возвращаем ошибку
+        execution_time = int((time.time() - start_time) * 1000)
+        logger.error("❌ Docker образ zedcode-python:latest не найден")
+        return {
+            "ok": False,
+            "error": "Docker образ zedcode-python:latest не найден. Выполните: docker build -t zedcode-python:latest docker/executor/",
+            "execution_time": execution_time,
+            "memory_mb": 0.0
+        }
+    except docker_errors.ContainerError as e:
+        execution_time = int((time.time() - start_time) * 1000)
+        logger.error(f"❌ Ошибка контейнера: {str(e)}")
+        return {
+            "ok": False,
+            "error": f"Ошибка контейнера: {str(e)}",
+            "execution_time": execution_time,
+            "memory_mb": 0.0
+        }
+    except Exception as e:
+        execution_time = int((time.time() - start_time) * 1000) if 'start_time' in locals() else 0
+        logger.error(f"❌ Ошибка Docker: {str(e)}", exc_info=True)
+        return {
+            "ok": False,
+            "error": f"Ошибка Docker: {str(e)}",
+            "execution_time": execution_time,
+            "memory_mb": 0.0
+        }
+
+
 def _run_with_timeout(code: str, time_limit_sec: float) -> Dict[str, object]:
-    """Выполнение Python кода с таймаутом и измерением памяти"""
+    """Выполнение Python кода с таймаутом и измерением памяти
+    
+    Автоматически использует Docker если доступен и USE_DOCKER=true,
+    иначе использует обычный subprocess режим.
+    """
+    # Проверяем, нужно ли использовать Docker
+    use_docker = os.environ.get("USE_DOCKER", "false").lower() in ("true", "1", "yes")
+    
+    if use_docker:
+        try:
+            from docker import DockerClient
+            # Проверяем доступность Docker
+            client = DockerClient.from_env()
+            client.ping()
+            # Используем Docker
+            return _run_with_timeout_docker(code, time_limit_sec)
+        except Exception as e:
+            # Если Docker недоступен, используем обычный режим
+            # В лог можно добавить информацию, но не прерываем выполнение
+            pass
+    
+    # Обычный режим выполнения (subprocess)
     import subprocess
     import tempfile
     import time
@@ -1818,4 +2213,92 @@ app = create_app()
 
 
 if __name__ == "__main__":
+    import sys
+    
+    # Устанавливаем UTF-8 кодировку для консоли (Windows)
+    try:
+        import io
+        if sys.platform == 'win32':
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass  # Игнорируем ошибки настройки кодировки
+    
+    # Проверяем настройки Docker при запуске
+    use_docker = os.environ.get("USE_DOCKER", "false").lower() in ("true", "1", "yes")
+    
+    print("=" * 60)
+    print("🚀 Запуск zedcode")
+    print("=" * 60)
+    print(f"Python: {sys.executable}")
+    print(f"USE_DOCKER: {use_docker}")
+    
+    if use_docker:
+        try:
+            # Используем прямой импорт для избежания проблем с атрибутами
+            from docker import DockerClient
+            from docker import errors as docker_errors
+            
+            try:
+                client = DockerClient.from_env()
+                client.ping()
+                print("✅ Docker режим: ВКЛЮЧЕН")
+                print("   Код будет выполняться в изолированных Docker контейнерах")
+                
+                # Инициализируем пул контейнеров
+                try:
+                    from docker_executor_pool import get_executor_pool
+                    pool = get_executor_pool()
+                    pool_size = pool.pool_size
+                    print(f"✅ Пул контейнеров инициализирован: {pool_size} контейнеров")
+                    print("   Контейнеры будут переиспользоваться для ускорения выполнения")
+                except Exception as e:
+                    print(f"⚠️  Не удалось инициализировать пул контейнеров: {e}")
+                    print("   Будет использован старый метод (создание нового контейнера каждый раз)")
+                
+                # Проверяем наличие образа
+                try:
+                    client.images.get("zedcode-python:latest")
+                    print("✅ Docker образ найден: zedcode-python:latest")
+                except docker_errors.ImageNotFound:
+                    print("⚠️  Docker образ НЕ найден: zedcode-python:latest")
+                    print("   Выполните: cd docker\\executor && docker build -t zedcode-python:latest .")
+            except docker_errors.DockerException as e:
+                print(f"⚠️  Docker режим: ВКЛЮЧЕН, но Docker недоступен: {str(e)}")
+                print("   Приложение будет использовать обычный режим (subprocess)")
+                print("   Убедитесь, что Docker Desktop запущен")
+            except Exception as e:
+                print(f"⚠️  Docker режим: ВКЛЮЧЕН, но произошла ошибка: {str(e)}")
+                print("   Приложение будет использовать обычный режим (subprocess)")
+                import traceback
+                traceback.print_exc()
+            
+        except ImportError as import_err:
+            print("⚠️  Docker режим: ВКЛЮЧЕН, но библиотека docker не установлена")
+            print(f"   Ошибка импорта: {str(import_err)}")
+            print(f"   Python: {sys.executable}")
+            print("   Установите: pip install docker")
+            print("   Приложение будет использовать обычный режим (subprocess)")
+        except Exception as e:
+            print(f"⚠️  Docker режим: ВКЛЮЧЕН, но произошла ошибка при импорте: {str(e)}")
+            print(f"   Python: {sys.executable}")
+            print("   Приложение будет использовать обычный режим (subprocess)")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("ℹ️  Docker режим: ВЫКЛЮЧЕН")
+        print("   Код будет выполняться через обычный subprocess (без изоляции)")
+        print("   Для включения Docker установите USE_DOCKER=true в .env файле")
+    
+    auto_remove = os.environ.get("DOCKER_AUTO_REMOVE", "true").lower() not in ("false", "0", "no")
+    if use_docker:
+        print(f"   Автоудаление контейнеров: {'ВКЛЮЧЕНО' if auto_remove else 'ВЫКЛЮЧЕНО'}")
+        if not auto_remove:
+            print("   Контейнеры будут оставаться для отладки (docker ps -a)")
+    
+    print("=" * 60)
+    print("🌐 Приложение доступно по адресу: http://localhost:8080")
+    print("=" * 60)
+    print()
+    
     app.run(host="0.0.0.0", port=8080, debug=True)

@@ -10,7 +10,11 @@ RUN useradd -m -u 1000 runner && \
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
+    coreutils \
     && rm -rf /var/lib/apt/lists/*
+
+# Устанавливаем Python зависимости
+RUN pip install --no-cache-dir psutil
 
 WORKDIR /app
 

@@ -67,7 +67,11 @@ def execute_code(code: str, timeout: int = 5) -> dict:
         
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
             # Выполняем код
-            exec(code, {"__builtins__": __builtins__})
+            # В Docker контейнере изоляция обеспечивается на уровне контейнера,
+            # поэтому можем использовать полный __builtins__
+            # Устанавливаем __name__ = "__main__" чтобы блоки if __name__ == "__main__" выполнялись
+            exec_globals = {"__builtins__": __builtins__, "__name__": "__main__"}
+            exec(code, exec_globals)
         
         stdout = stdout_capture.getvalue()
         stderr = stderr_capture.getvalue()
@@ -97,6 +101,20 @@ def execute_code(code: str, timeout: int = 5) -> dict:
 if __name__ == "__main__":
     # Читаем код из stdin
     code = sys.stdin.read()
+    
+    # Если код пустой, это ошибка
+    if not code or not code.strip():
+        result = {
+            "ok": False,
+            "stdout": "",
+            "stderr": "",
+            "error": "Пустой код для выполнения",
+            "traceback": None,
+            "execution_time": 0.0,
+            "memory_used": 0.0
+        }
+        print(json.dumps(result, ensure_ascii=False))
+        sys.exit(1)
     
     # Получаем timeout из переменной окружения (по умолчанию 5 сек)
     timeout = int(os.environ.get("TIMEOUT", "5"))
