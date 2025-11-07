@@ -5,7 +5,10 @@ import html
 from datetime import datetime
 from multiprocessing import Process, Queue
 from typing import Dict, List, Tuple
+from urllib.parse import urlparse
+
 from dotenv import load_dotenv
+from string import Template
 
 # Загружаем переменные окружения из .env файла
 load_dotenv()
@@ -34,15 +37,31 @@ except ImportError:
     print("Установите их командой: pip install psycopg2-binary sqlalchemy")
     exit(1)
 
-# Конфигурация PostgreSQL
-POSTGRES_CONFIG = {
-    'host': os.environ.get('DB_HOST', 'localhost'),
-    'port': int(os.environ.get('DB_PORT', 5432)),
-    'database': os.environ.get('DB_NAME', 'coding_platform'),
-    'user': os.environ.get('DB_USER', 'admin'),
-    'password': os.environ.get('DB_PASSWORD', 'Sserapheam17*'),
-    'client_encoding': 'utf8'
-}
+def _build_postgres_config() -> dict:
+    database_url = os.environ.get("DATABASE_URL")
+
+    if database_url:
+        parsed = urlparse(database_url)
+        return {
+            "host": parsed.hostname or os.environ.get("DB_HOST", "localhost"),
+            "port": parsed.port or int(os.environ.get("DB_PORT", 5432)),
+            "database": (parsed.path or "/coding_platform").lstrip("/"),
+            "user": parsed.username or os.environ.get("DB_USER", "admin"),
+            "password": parsed.password or os.environ.get("DB_PASSWORD"),
+            "client_encoding": "utf8",
+        }
+
+    return {
+        "host": os.environ.get("DB_HOST", "localhost"),
+        "port": int(os.environ.get("DB_PORT", 5432)),
+        "database": os.environ.get("DB_NAME", "coding_platform"),
+        "user": os.environ.get("DB_USER", "admin"),
+        "password": os.environ.get("DB_PASSWORD", "postgres"),
+        "client_encoding": "utf8",
+    }
+
+
+POSTGRES_CONFIG = _build_postgres_config()
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -1371,140 +1390,279 @@ def convert_special_floats_for_json(obj):
         return obj
 
 
-def judge_user_code(
-    user_code: str, testcases: List[Tuple[str, str]], time_limit_sec: float = 2.0
-) -> Dict[str, object]:
-    results: List[Dict[str, object]] = []
-    all_passed = True
-    for idx, (input_text, expected_output) in enumerate(testcases, start=1):
-        # Старая функция использует простой подход без входных данных
-        outcome = _run_with_timeout(user_code, time_limit_sec)
-        if outcome.get("timeout"):
-            case_res = {
-                "case": idx,
-                "status": "TIMEOUT",
-                "message": f"Превышено время {time_limit_sec:.1f}s",
-            }
-            all_passed = False
-        elif not outcome.get("ok"):
-            case_res = {
-                "case": idx,
-                "status": "RUNTIME_ERROR",
-                "message": outcome.get("error"),
-                "traceback": outcome.get("traceback"),
-            }
-            all_passed = False
-        else:
-            actual = (outcome.get("stdout") or "").strip()
-            expected = (expected_output or "").strip()
-            if actual == expected:
-                case_res = {"case": idx, "status": "OK"}
-            else:
-                case_res = {
-                    "case": idx,
-                    "status": "WA",
-                    "message": f"Ожидалось: {expected!r}, получено: {actual!r}",
-                }
-                all_passed = False
-        results.append(case_res)
-
-    return {"passed": all_passed, "results": results}
-
-
 def judge_user_code_with_tests(
     user_code: str, tests: List[Dict], language: str = "python3", time_limit_sec: float = 2.0
 ) -> Dict[str, object]:
     """
     Выполняет тестирование кода пользователя с использованием тестов из новой таблицы.
-    
+
     Args:
         user_code: Код пользователя
         tests: Список тестов в формате [{"input": "...", "output": ...}, ...]
         language: Язык программирования
         time_limit_sec: Лимит времени на выполнение одного теста
-    
+
     Returns:
         Словарь с результатами тестирования
     """
     import ast
     import math
-    
+    import json
+    import re
+
+    def _normalize_value(value):
+        if isinstance(value, str):
+            text = value.strip()
+            if text == "":
+                return text
+            try:
+                return ast.literal_eval(text)
+            except Exception:
+                try:
+                    return json.loads(text)
+                except Exception:
+                    return text
+        return value
+
+    if language == "python3":
+        method_match = re.search(r'def\s+(\w+)\s*\(', user_code)
+        method_name = method_match.group(1) if method_match else "solve"
+
+        tests_python_literal = repr(tests)
+
+        template_body = Template(
+            """
+def __zedcode_parse_input(raw_input):
+    import ast
+    import json
+
+    if raw_input is None:
+        return None
+
+    if isinstance(raw_input, (list, tuple, dict, int, float, bool)):
+        return raw_input
+
+    text = str(raw_input).strip()
+    if text == "":
+        return text
+
+    try:
+        return ast.literal_eval(text)
+    except Exception:
+        try:
+            return json.loads(text)
+        except Exception:
+            return text
+
+
+def __zedcode_call_method(solution, method_name, raw_input):
+    parsed = __zedcode_parse_input(raw_input)
+    target = getattr(solution, method_name)
+
+    if isinstance(parsed, dict):
+        return target(**parsed)
+    if isinstance(parsed, (list, tuple)):
+        return target(parsed)
+    return target(parsed)
+
+
+def __zedcode_serialize(obj):
+    if isinstance(obj, (list, tuple)):
+        return [__zedcode_serialize(item) for item in obj]
+    if isinstance(obj, dict):
+        normalized = {}
+        for key, val in obj.items():
+            normalized[str(key)] = __zedcode_serialize(val)
+        return normalized
+    if isinstance(obj, (int, float, bool)) or obj is None:
+        return obj
+    return str(obj)
+
+
+if __name__ == "__main__":
+    import json
+    import time
+    import traceback
+
+    tests = $tests_python_literal
+    output = []
+    solution = Solution()
+
+    for index, case in enumerate(tests, start=1):
+        test_input = case.get("input", "")
+        expected = case.get("output")
+        record = {"case": index, "input": test_input, "expected": expected}
+        start_time = time.perf_counter()
+        try:
+            result = __zedcode_call_method(solution, "$method_name", test_input)
+            record["actual"] = __zedcode_serialize(result)
+            record["execution_time"] = time.perf_counter() - start_time
+        except Exception as exc:
+            record["error"] = str(exc)
+            record["traceback"] = traceback.format_exc()
+        output.append(record)
+
+    print(json.dumps(output, ensure_ascii=False))
+"""
+        )
+
+        harness = "\n".join(
+            [
+                user_code,
+                "",
+                template_body.safe_substitute(
+                    tests_python_literal=tests_python_literal,
+                    method_name=method_name,
+                ).strip(),
+            ]
+        )
+
+        outcome = _run_with_timeout(harness, time_limit_sec * max(len(tests), 1))
+        memory_mb = outcome.get("memory_mb", 0.0)
+        raw_output = (outcome.get("output") or "").strip()
+
+        results: List[Dict[str, object]] = []
+        all_passed = True
+        total_execution_time = 0.0
+
+        if not outcome.get("ok"):
+            results.append({
+                "case": 1,
+                "status": "RUNTIME_ERROR",
+                "message": outcome.get("error", "Неизвестная ошибка"),
+                "traceback": outcome.get("traceback"),
+            })
+            all_passed = False
+        elif not raw_output:
+            results.append({
+                "case": 1,
+                "status": "RUNTIME_ERROR",
+                "message": "Пустой вывод тестового стенда",
+            })
+            all_passed = False
+        else:
+            try:
+                batch_results = json.loads(raw_output)
+            except json.JSONDecodeError as exc:
+                results.append({
+                    "case": 1,
+                    "status": "RUNTIME_ERROR",
+                    "message": f"Ошибка парсинга вывода тестового стенда: {str(exc)}",
+                    "raw_output": raw_output[:500],
+                })
+                all_passed = False
+            else:
+                for idx, test in enumerate(tests, start=1):
+                    case_info = batch_results[idx - 1] if idx - 1 < len(batch_results) else {}
+                    test_input = test.get("input", "")
+                    expected_output = test.get("output")
+
+                    if case_info.get("error"):
+                        results.append({
+                            "case": idx,
+                            "status": "RUNTIME_ERROR",
+                            "message": case_info.get("error"),
+                            "traceback": case_info.get("traceback"),
+                            "input": test_input,
+                            "expected": expected_output,
+                        })
+                        all_passed = False
+                        continue
+
+                    execution_time_case = float(case_info.get("execution_time", 0.0) or 0.0)
+                    total_execution_time += execution_time_case
+
+                    if execution_time_case > time_limit_sec:
+                        results.append({
+                            "case": idx,
+                            "status": "TIMEOUT",
+                            "message": f"Превышено время {time_limit_sec:.1f}s",
+                            "input": test_input,
+                            "expected": expected_output,
+                        })
+                        all_passed = False
+                        continue
+
+                    actual_value = case_info.get("actual")
+                    actual_normalized = _normalize_value(actual_value)
+                    expected_normalized = _normalize_value(expected_output)
+
+                    is_equal = False
+                    if isinstance(actual_normalized, float) and isinstance(expected_normalized, float):
+                        if math.isnan(actual_normalized) and math.isnan(expected_normalized):
+                            is_equal = True
+                        elif math.isinf(actual_normalized) and math.isinf(expected_normalized):
+                            is_equal = (actual_normalized > 0) == (expected_normalized > 0)
+                        else:
+                            is_equal = actual_normalized == expected_normalized
+                    else:
+                        is_equal = actual_normalized == expected_normalized
+
+                    if is_equal:
+                        results.append({
+                            "case": idx,
+                            "status": "OK",
+                            "input": test_input,
+                            "expected": expected_output,
+                            "actual": actual_value,
+                            "execution_time": execution_time_case,
+                            "memory_mb": memory_mb,
+                        })
+                    else:
+                        results.append({
+                            "case": idx,
+                            "status": "WA",
+                            "message": f"Ожидалось: {expected_output!r}, получено: {actual_value!r}",
+                            "input": test_input,
+                            "expected": expected_output,
+                            "actual": actual_value,
+                            "execution_time": execution_time_case,
+                            "memory_mb": memory_mb,
+                        })
+                        all_passed = False
+
+        return {
+            "passed": all_passed,
+            "results": results,
+            "passed_tests": sum(1 for r in results if r.get("status") == "OK"),
+            "total_tests": len(results),
+            "execution_time": total_execution_time,
+            "max_memory_mb": memory_mb,
+            "status": "passed" if all_passed else "failed",
+        }
+
+    # Обработка всех остальных языков (старый подход на каждый тест отдельно)
     results: List[Dict[str, object]] = []
     all_passed = True
     total_execution_time = 0.0
     max_memory_used = 0.0
-    
+
     for idx, test in enumerate(tests, start=1):
         test_input = test.get("input", "")
         expected_output = test.get("output")
-        
-        # Создаем тестовый код для выполнения
-        if language == "python3":
-            # Парсим входные данные (массив в формате строки)
-            try:
-                # Парсим входной массив
-                # Проверяем, что test_input - строка и не пустая
-                if not isinstance(test_input, str):
-                    test_input = str(test_input)
-                
-                # Убираем лишние пробелы
-                test_input = test_input.strip()
-                
-                # Пробуем распарсить через ast.literal_eval
-                try:
-                    input_array = ast.literal_eval(test_input)
-                except (ValueError, SyntaxError) as e:
-                    # Если ast.literal_eval не сработал, пробуем JSON
-                    try:
-                        import json
-                        input_array = json.loads(test_input)
-                    except json.JSONDecodeError:
-                        # Если и JSON не сработал, передаем как строку
-                        raise ValueError(f"Не удалось распарсить входные данные: {test_input[:100]}. Ошибка: {str(e)}")
-                
-                # Пытаемся найти метод в классе Solution
-                import re
-                method_match = re.search(r'def\s+(\w+)\s*\(', user_code)
-                method_name = method_match.group(1) if method_match else "solve"
-                
-                # Форматируем входные данные для вставки в код
-                # Используем repr для правильного форматирования
-                input_repr = repr(input_array)
-                
-                # Создаем тестовый код
-                test_code = f"""
-{user_code}
 
-# Выполнение теста
-if __name__ == "__main__":
-    solution = Solution()
-    result = solution.{method_name}({input_repr})
-    print(result)
-"""
-            except Exception as e:
-                case_res = {
-                    "case": idx,
-                    "status": "RUNTIME_ERROR",
-                    "message": f"Ошибка парсинга входных данных: {str(e)}. Тип: {type(test_input)}, Значение: {repr(test_input)[:100]}",
-                    "input": test_input,
-                    "expected": expected_output,
-                }
-                results.append(case_res)
-                all_passed = False
-                continue
-        else:
-            # Для других языков пока используем простой подход
-            test_code = user_code
-        
-        # Выполняем код
+        if not isinstance(test_input, str):
+            test_input = str(test_input)
+
+        test_input = test_input.strip()
+
+        try:
+            input_array = ast.literal_eval(test_input)
+        except (ValueError, SyntaxError):
+            try:
+                input_array = json.loads(test_input)
+            except json.JSONDecodeError:
+                input_array = test_input
+
+        test_code = user_code
+
         outcome = _run_with_timeout(test_code, time_limit_sec)
-        execution_time = outcome.get("execution_time", 0) / 1000.0  # Преобразуем в секунды
+        execution_time = outcome.get("execution_time", 0) / 1000.0
         memory_mb = outcome.get("memory_mb", 0.0)
         total_execution_time += execution_time
         if memory_mb > max_memory_used:
             max_memory_used = memory_mb
-        
-        # Проверяем таймаут (если время выполнения больше лимита или есть ошибка таймаута)
+
         if execution_time > time_limit_sec or "Превышено время" in outcome.get("error", ""):
             case_res = {
                 "case": idx,
@@ -1525,10 +1683,8 @@ if __name__ == "__main__":
             }
             all_passed = False
         else:
-            # Парсим результат
             actual_output_str = (outcome.get("output") or "").strip()
-            
-            # Если вывод пустой, это ошибка
+
             if not actual_output_str:
                 case_res = {
                     "case": idx,
@@ -1540,86 +1696,74 @@ if __name__ == "__main__":
                     "execution_time": execution_time,
                 }
                 all_passed = False
-                results.append(case_res)
-                continue
-            
-            try:
-                # Пробуем преобразовать в Python объект
-                # Обрабатываем True/False как строки
-                if actual_output_str.lower() in ("true", "false"):
-                    actual_output = actual_output_str.lower() == "true"
-                elif actual_output_str.lower() in ("none", "null"):
-                    actual_output = None
-                elif actual_output_str.lower() in ("inf", "infinity"):
-                    # Обрабатываем бесконечность
-                    actual_output = float('inf')
-                elif actual_output_str.lower() in ("-inf", "-infinity"):
-                    # Обрабатываем минус бесконечность
-                    actual_output = float('-inf')
-                elif actual_output_str.lower() == "nan":
-                    # Обрабатываем NaN
-                    actual_output = float('nan')
-                else:
-                    # Пробуем парсить как Python литерал
-                    actual_output = ast.literal_eval(actual_output_str)
-                
-                # Сравниваем результаты
-                # Специальная обработка для NaN (NaN != NaN в Python)
-                is_equal = False
-                if isinstance(actual_output, float) and isinstance(expected_output, float):
-                    # Если оба NaN, считаем равными
-                    if math.isnan(actual_output) and math.isnan(expected_output):
-                        is_equal = True
-                    # Если оба бесконечности одного знака
-                    elif math.isinf(actual_output) and math.isinf(expected_output):
-                        is_equal = (actual_output > 0) == (expected_output > 0)
+            else:
+                try:
+                    if actual_output_str.lower() in ("true", "false"):
+                        actual_output = actual_output_str.lower() == "true"
+                    elif actual_output_str.lower() in ("none", "null"):
+                        actual_output = None
+                    elif actual_output_str.lower() in ("inf", "infinity"):
+                        actual_output = float("inf")
+                    elif actual_output_str.lower() in ("-inf", "-infinity"):
+                        actual_output = float("-inf")
+                    elif actual_output_str.lower() == "nan":
+                        actual_output = float("nan")
+                    else:
+                        actual_output = ast.literal_eval(actual_output_str)
+
+                    if isinstance(actual_output, float) and isinstance(expected_output, float):
+                        if math.isnan(actual_output) and math.isnan(expected_output):
+                            is_equal = True
+                        elif math.isinf(actual_output) and math.isinf(expected_output):
+                            is_equal = (actual_output > 0) == (expected_output > 0)
+                        else:
+                            is_equal = actual_output == expected_output
                     else:
                         is_equal = actual_output == expected_output
-                else:
-                    is_equal = actual_output == expected_output
-                
-                if is_equal:
-                    case_res = {
-                        "case": idx,
-                        "status": "OK",
-                        "input": test_input,
-                        "expected": expected_output,
-                        "actual": actual_output,
-                        "execution_time": execution_time,
-                        "memory_mb": memory_mb,
-                    }
-                else:
+
+                    if is_equal:
+                        case_res = {
+                            "case": idx,
+                            "status": "OK",
+                            "input": test_input,
+                            "expected": expected_output,
+                            "actual": actual_output,
+                            "execution_time": execution_time,
+                            "memory_mb": memory_mb,
+                        }
+                    else:
+                        case_res = {
+                            "case": idx,
+                            "status": "WA",
+                            "message": f"Ожидалось: {expected_output!r}, получено: {actual_output!r}",
+                            "input": test_input,
+                            "expected": expected_output,
+                            "actual": actual_output,
+                            "execution_time": execution_time,
+                            "memory_mb": memory_mb,
+                        }
+                        all_passed = False
+                except Exception as e:
                     case_res = {
                         "case": idx,
                         "status": "WA",
-                        "message": f"Ожидалось: {expected_output!r}, получено: {actual_output!r}",
+                        "message": f"Ошибка парсинга результата: {str(e)}. Получено: {actual_output_str!r}",
                         "input": test_input,
                         "expected": expected_output,
-                        "actual": actual_output,
+                        "actual": actual_output_str,
                         "execution_time": execution_time,
                     }
                     all_passed = False
-            except Exception as e:
-                case_res = {
-                    "case": idx,
-                    "status": "WA",
-                    "message": f"Ошибка парсинга результата: {str(e)}. Получено: {actual_output_str!r}",
-                    "input": test_input,
-                    "expected": expected_output,
-                    "actual": actual_output_str,
-                    "execution_time": execution_time,
-                }
-                all_passed = False
-        
+
         results.append(case_res)
-    
+
     return {
         "passed": all_passed,
         "results": results,
         "passed_tests": sum(1 for r in results if r.get("status") == "OK"),
         "total_tests": len(results),
         "execution_time": total_execution_time,
-        "memory_used": max_memory_used,
+        "max_memory_mb": max_memory_used,
         "status": "passed" if all_passed else "failed",
     }
 

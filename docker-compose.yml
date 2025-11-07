@@ -11,9 +11,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d coding_platform"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,10 +41,20 @@ services:
       - redis
       - postgres
     environment:
+      - USE_DOCKER=${USE_DOCKER}
+      - DOCKER_POOL_SIZE=${DOCKER_POOL_SIZE}
+      - DOCKER_WARMUP=${DOCKER_WARMUP}
+      - DOCKER_HOST=${DOCKER_HOST}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=coding_platform
+      - DB_USER=admin
+      - DB_PASSWORD=${DB_PASSWORD}
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://admin:${DB_PASSWORD}@postgres:5432/coding_platform
     volumes:
       - ./celery_app.py:/app/celery_app.py
+      - /var/run/docker.sock:/var/run/docker.sock
     command: celery -A celery_app worker --loglevel=info --concurrency=4
 
   # Flask приложение
@@ -54,12 +64,22 @@ services:
       - postgres
       - redis
     environment:
+      - USE_DOCKER=${USE_DOCKER}
+      - DOCKER_POOL_SIZE=${DOCKER_POOL_SIZE}
+      - DOCKER_WARMUP=${DOCKER_WARMUP}
+      - DOCKER_HOST=${DOCKER_HOST}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=coding_platform
+      - DB_USER=admin
+      - DB_PASSWORD=${DB_PASSWORD}
       - DATABASE_URL=postgresql://admin:${DB_PASSWORD}@postgres:5432/coding_platform
       - REDIS_URL=redis://redis:6379/0
     ports:
       - "5000:5000"
     volumes:
       - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
     command: gunicorn -w 4 -b 0.0.0.0:5000 --timeout 120 main_postgres:app
 
   # Nginx балансировщик нагрузки
@@ -71,6 +91,8 @@ services:
       - "80:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./static:/app/static:ro
+      - ./static/uploads:/app/static/uploads:ro
     restart: unless-stopped
 
 volumes:

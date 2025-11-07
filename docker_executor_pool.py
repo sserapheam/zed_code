@@ -41,7 +41,19 @@ class DockerExecutorPool:
             "avg_execution_time": 0.0,
             "errors": 0
         }
-        
+
+    def _ensure_container_exists(self, container) -> tuple[Optional[Any], bool]:
+        """Проверяет, что контейнер существует, иначе создаёт новый.
+
+        Возвращает (контейнер, recreated_flag).
+        """
+        try:
+            self.client.api.inspect_container(container.id)
+            return container, False
+        except docker_errors.NotFound:
+            logger.warning("⚠️ Контейнер %s не найден, пересоздаем", container.id[:12])
+            return self._create_container(), True
+    
     def _create_container(self, container_id: Optional[str] = None) -> Optional[Any]:
         """Создает долгоживущий контейнер"""
         try:
@@ -203,6 +215,16 @@ class DockerExecutorPool:
                 container = self._create_container()
                 if not container:
                     raise Exception("Не удалось создать контейнер")
+
+            container, recreated = self._ensure_container_exists(container)
+            if container is None:
+                raise Exception("Не удалось создать контейнер")
+
+            if recreated:
+                from_pool = False
+
+            if container.id not in self.active_containers:
+                self.active_containers[container.id] = threading.Lock()
             
             timings["get_container"] = (time.time() - checkpoint) * 1000
             checkpoint = time.time()
@@ -254,13 +276,30 @@ class DockerExecutorPool:
             
             # Копируем файл в контейнер
             tar_stream.seek(0)
-            success = container.put_archive('/app', tar_stream.read())
-            
-            timings["put_archive"] = (time.time() - checkpoint) * 1000
-            checkpoint = time.time()
-            
+            tar_payload = tar_stream.read()
+
+            success = False
+            for attempt in range(2):
+                try:
+                    success = container.put_archive('/app', tar_payload)
+                    if success:
+                        break
+                except docker_errors.NotFound:
+                    logger.warning("⚠️ Контейнер %s исчез во время put_archive (попытка %d), пересоздаем", container.id[:12], attempt + 1)
+                    container, recreated = self._ensure_container_exists(container)
+                    if not container:
+                        raise Exception("Не удалось пересоздать контейнер")
+                    if recreated:
+                        from_pool = False
+                        if container.id not in self.active_containers:
+                            self.active_containers[container.id] = threading.Lock()
+                    time.sleep(0.1)
+                    continue
             if not success:
                 raise Exception("Не удалось скопировать код в контейнер")
+
+            timings["put_archive"] = (time.time() - checkpoint) * 1000
+            checkpoint = time.time()
             
             # Выполняем код через runner.py с таймаутом
             timeout_seconds = int(time_limit_sec) + 2
