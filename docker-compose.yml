@@ -41,6 +41,8 @@ services:
       - redis
       - postgres
     environment:
+      - DOCKER_USE_POOL=${DOCKER_USE_POOL}
+      - DOCKER_AUTO_REMOVE=${DOCKER_AUTO_REMOVE}
       - USE_DOCKER=${USE_DOCKER}
       - DOCKER_POOL_SIZE=${DOCKER_POOL_SIZE}
       - DOCKER_WARMUP=${DOCKER_WARMUP}
@@ -64,6 +66,8 @@ services:
       - postgres
       - redis
     environment:
+      - DOCKER_USE_POOL=${DOCKER_USE_POOL}
+      - DOCKER_AUTO_REMOVE=${DOCKER_AUTO_REMOVE}
       - USE_DOCKER=${USE_DOCKER}
       - DOCKER_POOL_SIZE=${DOCKER_POOL_SIZE}
       - DOCKER_WARMUP=${DOCKER_WARMUP}

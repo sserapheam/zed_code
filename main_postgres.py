@@ -2005,6 +2005,12 @@ def _run_with_timeout_docker(code: str, time_limit_sec: float) -> Dict[str, obje
     logger = logging.getLogger(__name__)
     
     try:
+        # ЯВНЫЙ переключатель: использовать ли пул
+        use_pool = os.environ.get("DOCKER_USE_POOL", "false").lower() in ("true", "1", "yes")
+        if not use_pool:
+            # Запускаем одноразовый контейнер (без пула)
+            return _run_with_timeout_docker_legacy(code, time_limit_sec)
+
         # Используем пул контейнеров для переиспользования
         from docker_executor_pool import get_executor_pool
         
@@ -2063,78 +2069,74 @@ def _run_with_timeout_docker_legacy(code: str, time_limit_sec: float) -> Dict[st
         container_id = None
         container = None
         try:
-            # В docker 7.x timeout был удален из run(), используем create() + start() + wait()
+            # Используем create()+start(), загружаем код через put_archive и выполняем runner в exec_run
             timeout_seconds = int(time_limit_sec) + 2
-            
-            # Создаем контейнер
-            # Используем cat для передачи содержимого файла в stdin runner.py
+
             container = client.containers.create(
                 image="zedcode-python:latest",
-                command=["sh", "-c", "cat /tmp/code.py | python -u /app/runner.py"],
-                volumes={temp_dir: {'bind': '/tmp', 'mode': 'ro'}},
-                mem_limit="256m",  # Максимум 256MB памяти
+                command=["sh", "-c", "tail -f /dev/null"],
+                mem_limit="256m",
                 cpu_period=100000,
-                cpu_quota=int(50000 * time_limit_sec),  # Ограничение CPU
-                network_disabled=True,  # Отключаем сеть
-                read_only=True  # Только чтение файловой системы
+                cpu_quota=int(50000 * time_limit_sec),
+                network_disabled=True,
+                read_only=False,
+                auto_remove=auto_remove
             )
             container_id = container.id
             logger.info(f"📋 Контейнер создан (ID: {container_id[:12]})")
-            
-            # Запускаем контейнер
+
             container.start()
-            
-            # Ждем завершения с таймаутом
+
+            # Готовим tar-архив с code.py
+            import tarfile, io
+            tar_stream = io.BytesIO()
+            with tarfile.open(fileobj=tar_stream, mode='w') as tar:
+                data = code.encode('utf-8')
+                ti = tarfile.TarInfo(name='code.py')
+                ti.size = len(data)
+                ti.mtime = int(time.time())
+                ti.mode = 0o644
+                tar.addfile(ti, io.BytesIO(data))
+            tar_stream.seek(0)
+            container.put_archive('/app', tar_stream.read())
+
+            # Выполняем runner
+            exec_res = container.exec_run(
+                ["sh", "-c", "cat /app/code.py | python -u /app/runner.py"],
+                stdout=True, stderr=True
+            )
+            exit_code = getattr(exec_res, 'exit_code', 1)
+            container_output = exec_res.output
+            logger.info("Контейнер успешно выполнен (legacy via exec_run)")
+
+            # Останавливаем и удаляем контейнер в любом случае, чтобы не накапливался
             try:
-                exit_status = container.wait(timeout=timeout_seconds)
-                exit_code = exit_status.get("StatusCode", 0) if isinstance(exit_status, dict) else exit_status
-            except Exception as wait_error:
-                # Если таймаут, останавливаем контейнер
-                logger.warning(f"⚠️ Таймаут выполнения (>{timeout_seconds}с), останавливаем контейнер...")
-                try:
-                    container.stop(timeout=1)
-                except Exception:
-                    pass
-                raise wait_error
-            
-            # Получаем вывод
-            container_output = container.logs(stdout=True, stderr=True)
-            
-            # Логируем сырой вывод для отладки
-            output_preview = container_output.decode('utf-8') if isinstance(container_output, bytes) else str(container_output)
-            logger.info(f"📤 Сырой вывод контейнера (длина: {len(output_preview)}, полный): {output_preview}")
-            
-            # Проверяем, что файл существует и читается
-            if not output_preview or len(output_preview.strip()) == 0:
-                logger.error(f"❌ Пустой вывод контейнера! Проверяем файл...")
-                # Пытаемся проверить содержимое файла через контейнер (если он еще существует)
-                if not auto_remove:
-                    try:
-                        # Проверяем, что файл существует в контейнере
-                        inspect_result = container.exec_run("cat /tmp/code.py", workdir="/tmp")
-                        logger.error(f"   Содержимое файла в контейнере: {inspect_result.output.decode('utf-8') if isinstance(inspect_result.output, bytes) else str(inspect_result.output)[:500]}")
-                    except Exception as e:
-                        logger.error(f"   Не удалось проверить файл: {e}")
-            
-            # НЕ удаляем контейнер сразу - нужно проверить вывод
-            # Удалим его после парсинга результата
-            logger.info("Контейнер успешно выполнен")
+                container.stop(timeout=1)
+            except Exception:
+                pass
+            try:
+                container.remove(force=True)
+            except Exception:
+                pass
         except Exception as container_error:
             # Если контейнер создался, но произошла ошибка, очищаем его
             if container is not None:
                 try:
-                    if not auto_remove:
-                        logger.warning(f"⚠️ Контейнер {container_id[:12]} останется для отладки")
-                    else:
-                        container.remove(force=True)
+                    container.stop(timeout=1)
+                except Exception:
+                    pass
+                try:
+                    container.remove(force=True)
                 except Exception:
                     pass
             raise container_error
         finally:
-            # Удаляем временный файл
+            # Чистим временный файл/каталог, если создавали
             try:
-                os.unlink(code_file)
-                os.rmdir(temp_dir)
+                if 'code_file' in locals() and os.path.exists(code_file):
+                    os.unlink(code_file)
+                if 'temp_dir' in locals() and os.path.isdir(temp_dir):
+                    os.rmdir(temp_dir)
             except Exception:
                 pass
         
@@ -2184,12 +2186,7 @@ def _run_with_timeout_docker_legacy(code: str, time_limit_sec: float) -> Dict[st
                 logger.error(f"   ok={result.get('ok')}, error={result.get('error')}, stderr={result.get('stderr')}")
                 logger.error(f"   Сырой вывод: {output_text[:500]}")
             
-            # Удаляем контейнер после успешного получения результата
-            if auto_remove and container is not None:
-                try:
-                    container.remove()
-                except Exception:
-                    pass
+            # Контейнер уже удалён выше; дополнительных действий не требуется
             
             return {
                 "ok": result.get("ok", False),
