@@ -46,7 +46,9 @@
   
   /* Шрифты */
   --font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, 'Cascadia Code', Consolas, monospace;
+  /* Описание задач: тех-читаемый шрифт в духе документации / coding platforms */
+  --font-problem: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
 }
 
 * {
@@ -3212,11 +3214,12 @@ html.dark-theme .hint-content {
 }
 
 .description-text {
-  line-height: 1.7;
-  font-family: var(--font-family);
+  line-height: 1.75;
+  font-family: var(--font-problem);
   color: var(--text);
   margin-bottom: 1.5rem;
   font-size: 15px;
+  letter-spacing: 0.01em;
   text-align: left;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -3224,6 +3227,12 @@ html.dark-theme .hint-content {
   padding: 1.5rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
+}
+
+.description-text .code-snippet,
+.description-text code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
 }
 
 /* Стили для красивого форматирования задач */
