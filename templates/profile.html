@@ -1,7 +1,11 @@
 {% extends 'base.html' %}
 {% block title %}Профиль{% endblock %}
+{% block body_class %}profile-page{% endblock %}
 {% block content %}
-  <h1>Профиль</h1>
+  <div class="profile-page-header">
+    <h1>Профиль</h1>
+    <p class="muted">Настройки аккаунта и статистики</p>
+  </div>
   
   <div class="profile-header">
     <div>
@@ -38,6 +42,7 @@
   <div class="panel">
     <h2>Редактировать профиль</h2>
     <form method="post" enctype="multipart/form-data" class="form">
+      <input type="hidden" name="form_action" value="update_profile" />
       <label>
         Отображаемое имя
         <input type="text" name="display_name" value="{{ user['display_name'] or '' }}" placeholder="Ваше имя"/>
@@ -59,6 +64,53 @@
     </form>
   </div>
 
+  <div class="panel profile-password-panel">
+    <h2>Смена пароля</h2>
+    <p class="muted profile-password-lead">После смены используйте новый пароль при следующем входе.</p>
+    <form method="post" class="form" autocomplete="off">
+      <input type="hidden" name="form_action" value="change_password" />
+      <label>
+        Текущий пароль
+        <input
+          type="password"
+          name="current_password"
+          required
+          maxlength="128"
+          autocomplete="current-password"
+          placeholder="Введите текущий пароль"
+        />
+      </label>
+      <label>
+        Новый пароль
+        <input
+          type="password"
+          name="new_password"
+          required
+          minlength="8"
+          maxlength="128"
+          autocomplete="new-password"
+          placeholder="Минимум 8 символов"
+        />
+      </label>
+      <p class="field-hint muted">Минимум 8 символов, хотя бы одна буква и одна цифра</p>
+      <label>
+        Повторите новый пароль
+        <input
+          type="password"
+          name="new_password2"
+          required
+          minlength="8"
+          maxlength="128"
+          autocomplete="new-password"
+          placeholder="Повторите новый пароль"
+        />
+      </label>
+      <div class="actions">
+        <button type="submit" class="btn">Сменить пароль</button>
+      </div>
+    </form>
+  </div>
+
   <script>
     function previewAvatar(e) {
       const file = e.target.files && e.target.files[0];
@@ -68,7 +120,7 @@
       if (!file) return;
       
       if (file.size > 5 * 1024 * 1024) {
-        box.innerHTML = '<p style="color: var(--danger); font-size: 0.9rem;">Файл слишком большой. Максимум 5MB.</p>';
+        box.innerHTML = '<p class="form-error-inline">Файл слишком большой. Максимум 5MB.</p>';
         return;
       }
       
@@ -79,4 +131,3 @@
     }
   </script>
 {% endblock %}
-

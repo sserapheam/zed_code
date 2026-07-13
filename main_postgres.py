@@ -333,6 +333,23 @@ def create_app() -> Flask:
         "help", "official", "zedcode", "zed_code",
     })
 
+    def _validate_password(password: str, password2: str, username: str = "") -> Optional[str]:
+        if not password:
+            return "Введите пароль"
+        if password != password2:
+            return "Пароли не совпадают"
+        if len(password) < PASSWORD_MIN_LEN:
+            return f"Пароль: минимум {PASSWORD_MIN_LEN} символов"
+        if len(password) > PASSWORD_MAX_LEN:
+            return f"Пароль: максимум {PASSWORD_MAX_LEN} символов"
+        if username and password.lower() == username.lower():
+            return "Пароль не должен совпадать с логином"
+        if not re.search(r"[A-Za-zА-Яа-я]", password) or not re.search(r"\d", password):
+            return "Пароль: хотя бы одна буква и одна цифра"
+        if password.strip() != password:
+            return "Пароль не должен начинаться или заканчиваться пробелом"
+        return None
+
     def _validate_registration(username: str, password: str, password2: str) -> Optional[str]:
         if not username or not password:
             return "Введите логин и пароль"
@@ -345,19 +362,7 @@ def create_app() -> Flask:
             )
         if username.lower() in RESERVED_USERNAMES:
             return "Это имя занято системой, выберите другое"
-        if password != password2:
-            return "Пароли не совпадают"
-        if len(password) < PASSWORD_MIN_LEN:
-            return f"Пароль: минимум {PASSWORD_MIN_LEN} символов"
-        if len(password) > PASSWORD_MAX_LEN:
-            return f"Пароль: максимум {PASSWORD_MAX_LEN} символов"
-        if password.lower() == username.lower():
-            return "Пароль не должен совпадать с логином"
-        if not re.search(r"[A-Za-zА-Яа-я]", password) or not re.search(r"\d", password):
-            return "Пароль: хотя бы одна буква и одна цифра"
-        if password.strip() != password:
-            return "Пароль не должен начинаться или заканчиваться пробелом"
-        return None
+        return _validate_password(password, password2, username)
 
     @app.route("/register", methods=["GET", "POST"])
     def register():
@@ -636,6 +641,53 @@ def create_app() -> Flask:
         if not user_id:
             return redirect(url_for("login"))
         if request.method == "POST":
+            form_action = (request.form.get("form_action") or "update_profile").strip()
+
+            if form_action == "change_password":
+                current_password = request.form.get("current_password") or ""
+                new_password = request.form.get("new_password") or ""
+                new_password2 = request.form.get("new_password2") or ""
+                user_row = execute_one(
+                    g.db,
+                    "SELECT username, password_hash FROM users WHERE id=%s",
+                    (user_id,),
+                )
+                if not user_row:
+                    flash("Пользователь не найден", "error")
+                    return redirect(url_for("login"))
+                if not current_password or not check_password_hash(
+                    user_row["password_hash"], current_password
+                ):
+                    flash("Неверный текущий пароль", "error")
+                    return redirect(url_for("profile"))
+                pwd_error = _validate_password(
+                    new_password, new_password2, user_row.get("username") or ""
+                )
+                if pwd_error:
+                    flash(pwd_error, "error")
+                    return redirect(url_for("profile"))
+                if check_password_hash(user_row["password_hash"], new_password):
+                    flash("Новый пароль должен отличаться от текущего", "error")
+                    return redirect(url_for("profile"))
+                cursor = get_cursor(g.db)
+                try:
+                    cursor.execute(
+                        "UPDATE users SET password_hash=%s WHERE id=%s",
+                        (generate_password_hash(new_password), user_id),
+                    )
+                    g.db.commit()
+                except Exception:
+                    try:
+                        g.db.rollback()
+                    except Exception:
+                        pass
+                    flash("Не удалось сменить пароль", "error")
+                    return redirect(url_for("profile"))
+                finally:
+                    cursor.close()
+                flash("Пароль успешно изменён", "success")
+                return redirect(url_for("profile"))
+
             display_name = (request.form.get("display_name") or "").strip()
             bio = (request.form.get("bio") or "").strip()
 
