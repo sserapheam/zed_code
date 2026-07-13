@@ -23,6 +23,10 @@ docker build -f docker/executor/Dockerfile -t zedcode-python:latest .
 echo "==> Restart stack"
 docker compose up -d --build
 
+# Nginx кэширует IP upstream при старте — перезапускаем после web
+echo "==> Restart nginx (refresh upstream DNS)"
+docker compose restart nginx
+
 echo "==> Status"
 docker compose ps
 echo "Deploy OK"
