@@ -2,7 +2,27 @@
 {% block title %}{{ problem['title'] }}{% endblock %}
 {% block body_class %}problem-page{% if results %}{% if results.get('passed') %} solution-success{% else %} solution-failed{% endif %}{% endif %}{% endblock %}
 {% block content %}
-  <a href="{{ url_for('problems') }}" class="back">← Назад к задачам</a>
+  <div class="problem-top-nav">
+    <a href="{{ url_for('problems') }}" class="back">← К задачам</a>
+    {% if topic_progress %}
+      <span class="topic-progress muted">
+        {{ topic_progress.topic }}:
+        {{ topic_progress.solved }}/{{ topic_progress.total }} решено
+      </span>
+    {% endif %}
+    <div class="problem-siblings">
+      {% if prev_problem %}
+        <a class="btn secondary btn-sm" href="{{ url_for('problem', problem_id=prev_problem.problem_id) }}" title="{{ prev_problem.title }}">← Предыдущая</a>
+      {% else %}
+        <span class="btn secondary btn-sm is-disabled">← Предыдущая</span>
+      {% endif %}
+      {% if next_problem %}
+        <a class="btn secondary btn-sm" href="{{ url_for('problem', problem_id=next_problem.problem_id) }}" title="{{ next_problem.title }}">Следующая →</a>
+      {% else %}
+        <span class="btn secondary btn-sm is-disabled">Следующая →</span>
+      {% endif %}
+    </div>
+  </div>
   
   <div class="problem-layout">
     <!-- Левая колонка - описание задачи -->

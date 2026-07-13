@@ -3,6 +3,10 @@ import re
 import json
 import traceback
 import html
+import hashlib
+import secrets
+import smtplib
+from email.message import EmailMessage
 from datetime import datetime, date, timedelta
 from multiprocessing import Process, Queue
 from typing import Dict, List, Optional, Tuple
@@ -351,8 +355,8 @@ def create_app() -> Flask:
             params.append(difficulty)
             
         if topic:
-            where_clause += " AND %s = ANY(topic_tags)"
-            params.append(topic)
+            where_clause += " AND (topic = %s OR %s = ANY(COALESCE(topic_tags, ARRAY[]::text[])))"
+            params.extend([topic, topic])
         
         sql = """
             SELECT problem_id, title, difficulty, topic_tags, topic
@@ -362,7 +366,23 @@ def create_app() -> Flask:
             LIMIT 100
         """
         results = execute_query(g.db, sql, params)
-        return render_template("search.html", q=q, difficulty=difficulty, topic=topic, results=results)
+        topic_options = execute_query(
+            g.db,
+            """
+            SELECT DISTINCT topic
+            FROM leetcode_problems_with_tests
+            WHERE topic IS NOT NULL AND topic != ''
+            ORDER BY topic
+            """,
+        ) or []
+        return render_template(
+            "search.html",
+            q=q,
+            difficulty=difficulty,
+            topic=topic,
+            results=results,
+            topic_options=topic_options,
+        )
 
     USERNAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{2,31}$")
     PASSWORD_MIN_LEN = 8
@@ -452,6 +472,209 @@ def create_app() -> Flask:
     def logout():
         session.clear()
         return redirect(url_for("login"))
+
+    def _ensure_password_reset_table():
+        try:
+            cursor = get_cursor(g.db)
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    token_hash VARCHAR(64) NOT NULL UNIQUE,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    used_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            g.db.commit()
+            cursor.close()
+        except Exception:
+            try:
+                g.db.rollback()
+            except Exception:
+                pass
+
+    def _mail_configured() -> bool:
+        return bool((os.environ.get("MAIL_SERVER") or "").strip())
+
+    def _send_mail(to_addr: str, subject: str, body: str) -> bool:
+        host = (os.environ.get("MAIL_SERVER") or "").strip()
+        if not host or not to_addr:
+            return False
+        port = int(os.environ.get("MAIL_PORT") or 587)
+        user = (os.environ.get("MAIL_USERNAME") or "").strip()
+        password = os.environ.get("MAIL_PASSWORD") or ""
+        mail_from = (os.environ.get("MAIL_FROM") or user or "noreply@zedcode.local").strip()
+        use_tls = (os.environ.get("MAIL_USE_TLS") or "true").lower() in ("1", "true", "yes")
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = mail_from
+        msg["To"] = to_addr
+        msg.set_content(body)
+        try:
+            with smtplib.SMTP(host, port, timeout=20) as smtp:
+                if use_tls:
+                    smtp.starttls()
+                if user:
+                    smtp.login(user, password)
+                smtp.send_message(msg)
+            return True
+        except Exception as e:
+            print(f"MAIL ERROR: {e}")
+            return False
+
+    @app.route("/forgot-password", methods=["GET", "POST"])
+    def forgot_password():
+        mail_ok = _mail_configured()
+        allow_dev = (os.environ.get("ALLOW_DEV_RESET_LINK") or "").lower() in ("1", "true", "yes")
+        if request.method == "POST":
+            username = (request.form.get("username") or "").strip()
+            if not username:
+                flash("Введите логин", "error")
+                return render_template(
+                    "forgot_password.html",
+                    mail_configured=mail_ok,
+                    allow_dev=allow_dev,
+                )
+            if not mail_ok and not allow_dev:
+                flash(
+                    "Сброс пароля по email пока не настроен. Добавьте MAIL_SERVER в .env "
+                    "или временно ALLOW_DEV_RESET_LINK=true для тестовой ссылки.",
+                    "error",
+                )
+                return render_template(
+                    "forgot_password.html",
+                    mail_configured=mail_ok,
+                    allow_dev=allow_dev,
+                )
+
+            _ensure_password_reset_table()
+            user = execute_one(
+                g.db,
+                "SELECT id, username FROM users WHERE username=%s",
+                (username,),
+            )
+            flash(
+                "Если аккаунт найден, следуйте инструкциям для сброса пароля.",
+                "success",
+            )
+            if not user:
+                return redirect(url_for("login"))
+
+            raw_token = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+            expires = datetime.utcnow() + timedelta(hours=1)
+            cursor = get_cursor(g.db)
+            try:
+                cursor.execute(
+                    "UPDATE password_reset_tokens SET used_at=NOW() WHERE user_id=%s AND used_at IS NULL",
+                    (user["id"],),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO password_reset_tokens(user_id, token_hash, expires_at)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (user["id"], token_hash, expires),
+                )
+                g.db.commit()
+            except Exception:
+                try:
+                    g.db.rollback()
+                except Exception:
+                    pass
+                return redirect(url_for("login"))
+            finally:
+                cursor.close()
+
+            reset_url = url_for("reset_password", token=raw_token, _external=True)
+            to_addr = (os.environ.get("MAIL_TO_OVERRIDE") or "").strip()
+            sent = False
+            if mail_ok and to_addr:
+                sent = _send_mail(
+                    to_addr,
+                    "Сброс пароля zedcode",
+                    f"Логин: {user['username']}\nСсылка (действует 1 час):\n{reset_url}\n",
+                )
+            if allow_dev:
+                flash(f"Ссылка для сброса ({user['username']}): {reset_url}", "success")
+            elif sent:
+                flash("Письмо со ссылкой отправлено.", "success")
+            elif mail_ok and not to_addr:
+                flash(
+                    "MAIL_SERVER задан, но нет MAIL_TO_OVERRIDE (в профиле пока нет email).",
+                    "error",
+                )
+            return redirect(url_for("login"))
+
+        return render_template(
+            "forgot_password.html",
+            mail_configured=mail_ok,
+            allow_dev=allow_dev,
+        )
+
+    @app.route("/reset-password/<token>", methods=["GET", "POST"])
+    def reset_password(token: str):
+        _ensure_password_reset_table()
+        token_hash = hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+        row = execute_one(
+            g.db,
+            """
+            SELECT t.id, t.user_id, t.expires_at, t.used_at, u.username
+            FROM password_reset_tokens t
+            JOIN users u ON u.id = t.user_id
+            WHERE t.token_hash=%s
+            """,
+            (token_hash,),
+        )
+        valid = False
+        if row and not row.get("used_at"):
+            exp = row["expires_at"]
+            now = datetime.utcnow()
+            if getattr(exp, "tzinfo", None) is not None:
+                from datetime import timezone
+                now = datetime.now(timezone.utc)
+            try:
+                valid = exp >= now
+            except TypeError:
+                valid = False
+        if not valid:
+            flash("Ссылка сброса недействительна или устарела", "error")
+            return redirect(url_for("forgot_password"))
+
+        if request.method == "POST":
+            password = request.form.get("password") or ""
+            password2 = request.form.get("password2") or ""
+            err = _validate_password(password, password2, row["username"] or "")
+            if err:
+                flash(err, "error")
+                return render_template("reset_password.html", token=token, username=row["username"])
+            cursor = get_cursor(g.db)
+            try:
+                cursor.execute(
+                    "UPDATE users SET password_hash=%s WHERE id=%s",
+                    (generate_password_hash(password), row["user_id"]),
+                )
+                cursor.execute(
+                    "UPDATE password_reset_tokens SET used_at=NOW() WHERE id=%s",
+                    (row["id"],),
+                )
+                g.db.commit()
+            except Exception:
+                try:
+                    g.db.rollback()
+                except Exception:
+                    pass
+                flash("Не удалось обновить пароль", "error")
+                return render_template("reset_password.html", token=token, username=row["username"])
+            finally:
+                cursor.close()
+            flash("Пароль обновлён. Войдите с новым паролем.", "success")
+            return redirect(url_for("login"))
+
+        return render_template("reset_password.html", token=token, username=row["username"])
 
     @app.route("/dashboard")
     def dashboard():
@@ -775,13 +998,31 @@ def create_app() -> Flask:
             if avatar_file and avatar_file.filename:
                 filename = secure_filename(avatar_file.filename)
                 name, ext = os.path.splitext(filename)
-                if ext.lower() in {".png", ".jpg", ".jpeg", ".gif"}:
-                    unique_name = f"u{user_id}_{int(datetime.utcnow().timestamp())}{ext.lower()}"
-                    save_path = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
-                    avatar_file.save(save_path)
-                    avatar_path = f"uploads/{unique_name}"
-                else:
+                ext = ext.lower()
+                allowed = {".png": b"\x89PNG\r\n\x1a\n", ".jpg": None, ".jpeg": None, ".gif": b"GIF8"}
+                if ext not in allowed:
                     flash("Допустимы только изображения: PNG, JPG, GIF", "error")
+                else:
+                    raw = avatar_file.read()
+                    avatar_file.stream.seek(0)
+                    if len(raw) > 5 * 1024 * 1024:
+                        flash("Аватар слишком большой (максимум 5MB)", "error")
+                    else:
+                        ok_magic = False
+                        if ext == ".png" and raw.startswith(b"\x89PNG\r\n\x1a\n"):
+                            ok_magic = True
+                        elif ext == ".gif" and raw.startswith(b"GIF8"):
+                            ok_magic = True
+                        elif ext in {".jpg", ".jpeg"} and len(raw) >= 3 and raw[:3] == b"\xff\xd8\xff":
+                            ok_magic = True
+                        if not ok_magic:
+                            flash("Файл не похож на изображение PNG/JPG/GIF", "error")
+                        else:
+                            unique_name = f"u{user_id}_{int(datetime.utcnow().timestamp())}{ext}"
+                            save_path = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
+                            with open(save_path, "wb") as out:
+                                out.write(raw)
+                            avatar_path = f"uploads/{unique_name}"
 
             cursor = get_cursor(g.db)
             if avatar_path:
@@ -1298,9 +1539,6 @@ def create_app() -> Flask:
         if problem["hints"]:
             problem["hints"] = [h for h in problem["hints"] if h and str(h).strip()]
         
-        # Отладочная информация
-        print(f"DEBUG: Problem {problem_id} hints: {problem.get('hints')}, type: {type(problem.get('hints'))}, length: {len(problem.get('hints', []))}")
-        
         # constraints уже должна быть строкой, но проверим
         if problem.get("constraints") and isinstance(problem["constraints"], dict):
             problem["constraints"] = str(problem["constraints"])
@@ -1327,6 +1565,57 @@ def create_app() -> Flask:
         
         # Получаем теги задачи
         tags = problem["topic_tags"] or []
+
+        # Prev / next в рамках темы (или глобально по id)
+        topic_name = problem.get("topic")
+        if topic_name:
+            neighbors = execute_query(
+                g.db,
+                """
+                SELECT problem_id, title FROM leetcode_problems_with_tests
+                WHERE topic=%s
+                ORDER BY problem_id
+                """,
+                (topic_name,),
+            ) or []
+        else:
+            neighbors = execute_query(
+                g.db,
+                """
+                SELECT problem_id, title FROM leetcode_problems_with_tests
+                ORDER BY problem_id
+                """,
+            ) or []
+        prev_problem = next_problem = None
+        for i, row in enumerate(neighbors):
+            if row["problem_id"] == problem_id:
+                if i > 0:
+                    prev_problem = neighbors[i - 1]
+                if i + 1 < len(neighbors):
+                    next_problem = neighbors[i + 1]
+                break
+
+        topic_progress = None
+        if topic_name:
+            total_in_topic = len(neighbors)
+            solved_in_topic = 0
+            if user_id and total_in_topic:
+                solved_row = execute_one(
+                    g.db,
+                    """
+                    SELECT COUNT(DISTINCT ptr.problem_id) AS cnt
+                    FROM problem_test_results ptr
+                    JOIN leetcode_problems_with_tests p ON p.problem_id = ptr.problem_id
+                    WHERE ptr.user_id=%s AND ptr.status='passed' AND p.topic=%s
+                    """,
+                    (user_id, topic_name),
+                )
+                solved_in_topic = int((solved_row or {}).get("cnt") or 0)
+            topic_progress = {
+                "topic": topic_name,
+                "solved": solved_in_topic,
+                "total": total_in_topic,
+            }
 
         # Создаем боковое меню для задач той же темы
         sidebar_tree = None
@@ -1631,22 +1920,29 @@ def create_app() -> Flask:
             ORDER BY c.created_at ASC
             """,
             (problem_id,),
-        )
-        
-        # Получаем реакции текущего пользователя для каждого комментария
+        ) or []
+
+        user_reactions_map = {}
+        if user_id and comments_raw:
+            ids = [c["id"] for c in comments_raw]
+            placeholders = ",".join(["%s"] * len(ids))
+            reaction_rows = execute_query(
+                g.db,
+                f"""
+                SELECT comment_id, reaction_type
+                FROM comment_reactions
+                WHERE user_id = %s AND comment_id IN ({placeholders})
+                """,
+                [user_id] + ids,
+            ) or []
+            user_reactions_map = {
+                r["comment_id"]: r["reaction_type"] for r in reaction_rows
+            }
+
         comments = []
         for comment in comments_raw:
-            user_reaction = None
-            if user_id:
-                reaction = execute_one(g.db,
-                    "SELECT reaction_type FROM comment_reactions WHERE comment_id = %s AND user_id = %s",
-                    (comment["id"], user_id),
-                )
-                if reaction:
-                    user_reaction = reaction["reaction_type"]
-            
             comment_dict = dict(comment)
-            comment_dict["user_reaction"] = user_reaction
+            comment_dict["user_reaction"] = user_reactions_map.get(comment["id"])
             comments.append(comment_dict)
         
         return render_template(
@@ -1658,7 +1954,10 @@ def create_app() -> Flask:
             sidebar_tree=sidebar_tree,
             stats_for_chart=stats_for_chart,
             comments=comments,
-            user_id=user_id,  # Передаем user_id для проверки авторизации в шаблоне
+            user_id=user_id,
+            prev_problem=prev_problem,
+            next_problem=next_problem,
+            topic_progress=topic_progress,
         )
 
     @app.route("/comment/add", methods=["POST"])

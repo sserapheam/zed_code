@@ -11,7 +11,12 @@
       <option value="Medium" {% if difficulty=='Medium' %}selected{% endif %}>Medium</option>
       <option value="Hard" {% if difficulty=='Hard' %}selected{% endif %}>Hard</option>
     </select>
-    <input type="text" name="topic" value="{{ topic }}" placeholder="Тема (например: Array, String)" />
+    <select name="topic">
+      <option value="">Все темы</option>
+      {% for t in topic_options or [] %}
+        <option value="{{ t['topic'] }}" {% if topic==t['topic'] %}selected{% endif %}>{{ t['topic'] }}</option>
+      {% endfor %}
+    </select>
     <button class="btn" type="submit">Искать</button>
   </form>
 
