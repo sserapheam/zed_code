@@ -8,8 +8,9 @@ cd "$APP_DIR"
 
 echo "==> Deploy branch: $BRANCH"
 git fetch origin
-git checkout "$BRANCH"
+# Локальный дрейф на сервере (sed/debug) не должен ломать деплой
 git reset --hard "origin/$BRANCH"
+git checkout "$BRANCH"
 
 # Сохраняем локальный .env (он в .gitignore)
 if [ ! -f .env ]; then
