@@ -261,7 +261,7 @@
                       <div>
                         <div style="font-size: 0.85em; color: #64748b; margin-bottom: 0.25rem;">Время выполнения</div>
                         <div style="font-size: 1.5em; font-weight: 600; color: #1e293b;">
-                          {{ "%.2f"|format(results.get('execution_time', 0) * 1000) }} ms
+                          {{ (results.get('execution_time', 0) * 1000)|round|int }} ms
                         </div>
                       </div>
                       {% if stats_for_chart.time_percentile is defined and stats_for_chart.others_count > 0 %}
@@ -281,7 +281,7 @@
                       <div>
                         <div style="font-size: 0.85em; color: #64748b; margin-bottom: 0.25rem;">Использование памяти</div>
                         <div style="font-size: 1.5em; font-weight: 600; color: #1e293b;">
-                          {{ "%.2f"|format(results.get('memory_used', 0)) }} MB
+                          {{ "%.1f"|format(results.get('memory_used', 0)) }} MB
                         </div>
                       </div>
                       {% if stats_for_chart.memory_percentile is defined and stats_for_chart.others_count > 0 %}
@@ -553,65 +553,59 @@
     const statsData = {{ stats_for_chart|tojson }};
     const current = statsData.current || {};
     
-    // График времени выполнения
+    // График времени выполнения — как на LeetCode: гистограмма с вертикальным маркером
     const timeCtx = document.getElementById('timeChart');
     if (timeCtx && statsData.time_bins) {
-      const timeBins = statsData.time_bins;
+      const timeBins = statsData.time_bins; // {min, max, bin_width, counts}
       const currentTimeMs = current.execution_time * 1000;
-      const maxCount = Math.max(...timeBins.counts);
-      
-      // Создаем данные для гистограммы
-      const binLabels = [];
-      const binData = [];
-      const binColors = [];
-      
+
+      const labels = [];
+      const dataCounts = [];
       for (let i = 0; i < timeBins.counts.length; i++) {
-        const binStart = timeBins.min + i * timeBins.bin_width;
-        const binEnd = binStart + timeBins.bin_width;
-        binLabels.push(`${binStart.toFixed(0)}-${binEnd.toFixed(0)}`);
-        binData.push(timeBins.counts[i]);
-        
-        // Проверяем, попадает ли текущее значение в этот bin
-        if (currentTimeMs >= binStart && currentTimeMs < binEnd) {
-          binColors.push('rgba(34, 197, 94, 0.8)'); // Зеленый для текущего решения
-        } else {
-          binColors.push('rgba(99, 102, 241, 0.6)'); // Синий для других
-        }
+        const start = timeBins.min + i * timeBins.bin_width;
+        const end = start + timeBins.bin_width;
+        labels.push(`${Math.round(start)}-${Math.round(end)}`);
+        dataCounts.push(timeBins.counts[i]);
       }
-      
-      // Плагин для рисования вертикальной линии
+
       const timeLinePlugin = {
         id: 'timeLinePlugin',
-        afterDraw: function(chart) {
-          const xScale = chart.scales.x;
-          const yScale = chart.scales.y;
-          const currentX = xScale.getPixelForValue(currentTimeMs);
-          
-          if (currentX >= xScale.left && currentX <= xScale.right) {
-            const ctx = chart.ctx;
-            ctx.save();
-            ctx.strokeStyle = 'rgba(34, 197, 94, 1)';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            ctx.beginPath();
-            ctx.moveTo(currentX, yScale.top);
-            ctx.lineTo(currentX, yScale.bottom);
-            ctx.stroke();
-            ctx.restore();
+        afterDatasetsDraw: function(chart) {
+          const meta = chart.getDatasetMeta(0);
+          if (!meta || !meta.data || meta.data.length === 0) return;
+          let idx = 0;
+          if (timeBins.bin_width > 0) {
+            idx = Math.floor((currentTimeMs - timeBins.min) / timeBins.bin_width);
+            if (idx < 0) idx = 0;
+            if (idx >= meta.data.length) idx = meta.data.length - 1;
           }
+          const bar = meta.data[idx];
+          if (!bar) return;
+          const x = bar.x;
+          const yScale = chart.scales.y;
+          const ctx = chart.ctx;
+          ctx.save();
+          ctx.strokeStyle = 'rgba(34, 197, 94, 1)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.moveTo(x, yScale.top);
+          ctx.lineTo(x, yScale.bottom);
+          ctx.stroke();
+          ctx.restore();
         }
       };
-      
+
       const timeChart = new Chart(timeCtx, {
         type: 'bar',
         plugins: [timeLinePlugin],
         data: {
-          labels: binLabels,
+          labels,
           datasets: [{
             label: 'Количество решений',
-            data: binData,
-            backgroundColor: binColors,
-            borderColor: binColors.map(c => c.replace('0.6', '1').replace('0.8', '1')),
+            data: dataCounts,
+            backgroundColor: labels.map((_, i) => 'rgba(99, 102, 241, 0.6)'),
+            borderColor: labels.map((_, i) => 'rgba(99, 102, 241, 1)'),
             borderWidth: 1
           }]
         },
@@ -619,36 +613,23 @@
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: {
-              display: false
-            },
+            legend: { display: false },
             tooltip: {
               callbacks: {
-                label: function(context) {
-                  return `${context.parsed.y} решений`;
-                }
+                title: (items) => items[0]?.label || '',
+                label: (ctx) => `${ctx.parsed.y} решений`
               }
             }
           },
           scales: {
             x: {
-              title: {
-                display: true,
-                text: 'Время выполнения (ms)'
-              },
-              grid: {
-                display: false
-              }
+              title: { display: true, text: 'Время выполнения (ms)' },
+              grid: { display: false }
             },
             y: {
-              title: {
-                display: true,
-                text: 'Количество решений'
-              },
+              title: { display: true, text: 'Количество решений' },
               beginAtZero: true,
-              ticks: {
-                stepSize: 1
-              }
+              ticks: { stepSize: 1 }
             }
           }
         }
@@ -683,23 +664,29 @@
       // Плагин для рисования вертикальной линии
       const memoryLinePlugin = {
         id: 'memoryLinePlugin',
-        afterDraw: function(chart) {
-          const xScale = chart.scales.x;
-          const yScale = chart.scales.y;
-          const currentX = xScale.getPixelForValue(currentMemory);
-          
-          if (currentX >= xScale.left && currentX <= xScale.right) {
-            const ctx = chart.ctx;
-            ctx.save();
-            ctx.strokeStyle = 'rgba(34, 197, 94, 1)';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            ctx.beginPath();
-            ctx.moveTo(currentX, yScale.top);
-            ctx.lineTo(currentX, yScale.bottom);
-            ctx.stroke();
-            ctx.restore();
+        afterDatasetsDraw: function(chart) {
+          const meta = chart.getDatasetMeta(0);
+          if (!meta || !meta.data || meta.data.length === 0) return;
+          let idx = 0;
+          if (memoryBins.bin_width > 0) {
+            idx = Math.floor((currentMemory - memoryBins.min) / memoryBins.bin_width);
+            if (idx < 0) idx = 0;
+            if (idx >= meta.data.length) idx = meta.data.length - 1;
           }
+          const bar = meta.data[idx];
+          if (!bar) return;
+          const x = bar.x;
+          const yScale = chart.scales.y;
+          const ctx = chart.ctx;
+          ctx.save();
+          ctx.strokeStyle = 'rgba(34, 197, 94, 1)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.moveTo(x, yScale.top);
+          ctx.lineTo(x, yScale.bottom);
+          ctx.stroke();
+          ctx.restore();
         }
       };
       

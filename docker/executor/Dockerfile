@@ -10,12 +10,18 @@ RUN useradd -m -u 1000 runner && \
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
+    coreutils \
     && rm -rf /var/lib/apt/lists/*
+
+# Устанавливаем Python зависимости для worker
+COPY requirements_postgres.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+RUN pip install --no-cache-dir celery
 
 WORKDIR /app
 
 # Копируем скрипт выполнения
-COPY runner.py /app/runner.py
+COPY docker/executor/runner.py /app/runner.py
 RUN chmod +x /app/runner.py && \
     chown runner:runner /app/runner.py
 
