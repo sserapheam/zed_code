@@ -10,8 +10,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
+    # Не публикуем Postgres наружу (доступ только внутри docker-сети)
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin -d coding_platform"]
       interval: 10s
@@ -21,8 +20,7 @@ services:
   # Redis для очередей и кэша
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # Не публикуем Redis наружу
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -57,7 +55,7 @@ services:
     volumes:
       - ./celery_app.py:/app/celery_app.py
       - /var/run/docker.sock:/var/run/docker.sock
-    command: celery -A celery_app worker --loglevel=info --concurrency=4
+    command: celery -A celery_app worker --loglevel=info --concurrency=2
 
   # Flask приложение
   web:
@@ -79,12 +77,13 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - DATABASE_URL=postgresql://admin:${DB_PASSWORD}@postgres:5432/coding_platform
       - REDIS_URL=redis://redis:6379/0
-    ports:
-      - "5000:5000"
+    # Наружу только через nginx
+    expose:
+      - "5000"
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
-    command: gunicorn -w 4 -b 0.0.0.0:5000 --timeout 120 main_postgres:app
+    command: gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 main_postgres:app
 
   # Nginx балансировщик нагрузки
   nginx:
@@ -92,7 +91,8 @@ services:
     depends_on:
       - web
     ports:
-      - "80:80"
+      # Спец-порт вместо 80 (менее заметно, пока без домена/HTTPS)
+      - "8088:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./static:/app/static:ro
