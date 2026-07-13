@@ -3,7 +3,7 @@ import re
 import json
 import traceback
 import html
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from multiprocessing import Process, Queue
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -734,12 +734,135 @@ def create_app() -> Flask:
             """,
             (user_id, user_id),
         )
+        activity = _build_activity_calendar(user_id)
         return render_template(
             "profile.html",
             user=user,
             submissions_count=(stats or {}).get("submissions_count") or 0,
             solved_count=(stats or {}).get("solved_count") or 0,
+            activity_weeks=activity["weeks"],
+            activity_months=activity["months"],
+            activity_total=activity["total"],
+            activity_total_label=activity["total_label"],
+            activity_weekday_labels=activity["weekday_labels"],
         )
+
+    def _activity_level(count: int) -> int:
+        if count <= 0:
+            return 0
+        if count == 1:
+            return 1
+        if count <= 3:
+            return 2
+        if count <= 6:
+            return 3
+        return 4
+
+    def _plural_submissions(n: int) -> str:
+        n_abs = abs(n) % 100
+        n1 = n_abs % 10
+        if 11 <= n_abs <= 14:
+            word = "отправок"
+        elif n1 == 1:
+            word = "отправка"
+        elif 2 <= n1 <= 4:
+            word = "отправки"
+        else:
+            word = "отправок"
+        return f"{n} {word}"
+
+    def _build_activity_calendar(user_id: int) -> dict:
+        """GitHub-like heat map: last 52 Mon–Sun weeks of submission counts."""
+        month_names = (
+            "янв", "фев", "мар", "апр", "май", "июн",
+            "июл", "авг", "сен", "окт", "ноя", "дек",
+        )
+        day_names = (
+            "понедельник", "вторник", "среда", "четверг",
+            "пятница", "суббота", "воскресенье",
+        )
+        today = date.today()
+        current_week_start = today - timedelta(days=today.weekday())
+        start_date = current_week_start - timedelta(weeks=51)
+        end_date = current_week_start + timedelta(days=6)
+
+        counts: Dict[date, int] = {}
+        rows = execute_query(
+            g.db,
+            """
+            SELECT created_at::date AS day, COUNT(*)::int AS cnt
+            FROM problem_test_results
+            WHERE user_id = %s
+              AND created_at::date >= %s
+              AND created_at::date <= %s
+            GROUP BY created_at::date
+            """,
+            (user_id, start_date, today),
+        ) or []
+        for row in rows:
+            day_val = row.get("day")
+            if isinstance(day_val, datetime):
+                day_val = day_val.date()
+            if day_val:
+                counts[day_val] = int(row.get("cnt") or 0)
+
+        weeks: List[List[dict]] = []
+        months: List[dict] = []
+        total = 0
+        cursor_day = start_date
+        week_index = 0
+        prev_month = None
+        while cursor_day <= end_date:
+            week: List[dict] = []
+            for _ in range(7):
+                cnt = counts.get(cursor_day, 0) if cursor_day <= today else 0
+                if cursor_day <= today:
+                    total += cnt
+                    level = _activity_level(cnt)
+                    future = False
+                else:
+                    level = -1
+                    future = True
+                label = (
+                    f"{cursor_day.day} {month_names[cursor_day.month - 1]}: "
+                    f"{_plural_submissions(cnt)}"
+                    if not future
+                    else f"{cursor_day.day} {month_names[cursor_day.month - 1]}"
+                )
+                week.append({
+                    "date": cursor_day.isoformat(),
+                    "count": cnt,
+                    "level": level,
+                    "label": label,
+                    "future": future,
+                    "weekday": day_names[cursor_day.weekday()],
+                })
+                if cursor_day.day == 1 or (week_index == 0 and cursor_day == start_date):
+                    if cursor_day.month != prev_month:
+                        months.append({
+                            "label": month_names[cursor_day.month - 1],
+                            "week_index": week_index,
+                        })
+                        prev_month = cursor_day.month
+                cursor_day += timedelta(days=1)
+            weeks.append(week)
+            week_index += 1
+
+        return {
+            "weeks": weeks,
+            "months": months,
+            "total": total,
+            "weekday_labels": [
+                {"text": "Пн", "show": True},
+                {"text": "Вт", "show": False},
+                {"text": "Ср", "show": True},
+                {"text": "Чт", "show": False},
+                {"text": "Пт", "show": True},
+                {"text": "Сб", "show": False},
+                {"text": "Вс", "show": False},
+            ],
+            "total_label": _plural_submissions(total),
+        }
 
     @app.route("/leaderboard")
     def leaderboard():

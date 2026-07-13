@@ -39,6 +39,52 @@
     </div>
   </div>
 
+  <div class="panel activity-panel">
+    <div class="activity-panel-head">
+      <h2>Активность</h2>
+      <p class="muted">{{ activity_total_label }} за последний год</p>
+    </div>
+    <div class="activity-graph-wrap">
+      <div class="activity-graph" style="--weeks: {{ activity_weeks|length }}">
+        <div class="activity-months" aria-hidden="true">
+          {% for m in activity_months %}
+            <span class="activity-month" style="grid-column: {{ m.week_index + 1 }}">{{ m.label }}</span>
+          {% endfor %}
+        </div>
+        <div class="activity-body">
+          <div class="activity-wdays" aria-hidden="true">
+            {% for d in activity_weekday_labels %}
+              <span class="activity-wday{% if not d.show %} is-empty{% endif %}">{{ d.text if d.show else '' }}</span>
+            {% endfor %}
+          </div>
+          <div class="activity-weeks">
+            {% for week in activity_weeks %}
+              <div class="activity-week">
+                {% for day in week %}
+                  <div
+                    class="activity-cell activity-level-{{ day.level }}{% if day.future %} is-future{% endif %}"
+                    title="{{ day.label }}"
+                    data-date="{{ day.date }}"
+                    data-count="{{ day.count }}"
+                  ></div>
+                {% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="activity-legend">
+          <span class="muted">Меньше</span>
+          <div class="activity-cell activity-level-0" title="Нет отправок"></div>
+          <div class="activity-cell activity-level-1" title="1 отправка"></div>
+          <div class="activity-cell activity-level-2" title="2–3 отправки"></div>
+          <div class="activity-cell activity-level-3" title="4–6 отправок"></div>
+          <div class="activity-cell activity-level-4" title="7+ отправок"></div>
+          <span class="muted">Больше</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="panel">
     <h2>Редактировать профиль</h2>
     <form method="post" enctype="multipart/form-data" class="form">
