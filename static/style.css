@@ -66,6 +66,65 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Лёгкая атмосфера фона: grain + редкие микроточки (без анимации) */
+:root {
+  --atmos-opacity: 0.045;
+  --atmos-dot: rgba(15, 23, 42, 0.4);
+}
+
+html.dark-theme,
+.dark-theme {
+  --atmos-opacity: 0.085;
+  --atmos-dot: rgba(232, 237, 242, 0.5);
+}
+
+body.problem-page {
+  --atmos-opacity: 0.028;
+}
+
+html.dark-theme body.problem-page,
+body.dark-theme.problem-page {
+  --atmos-opacity: 0.05;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--atmos-opacity);
+  background-image:
+    radial-gradient(circle at 12% 18%, var(--atmos-dot) 0 0.9px, transparent 1.1px),
+    radial-gradient(circle at 78% 12%, var(--atmos-dot) 0 0.7px, transparent 1px),
+    radial-gradient(circle at 42% 64%, var(--atmos-dot) 0 0.8px, transparent 1.05px),
+    radial-gradient(circle at 88% 72%, var(--atmos-dot) 0 0.65px, transparent 0.95px),
+    radial-gradient(circle at 28% 88%, var(--atmos-dot) 0 0.75px, transparent 1px),
+    radial-gradient(circle at 58% 34%, var(--atmos-dot) 0 0.55px, transparent 0.85px),
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  background-size:
+    320px 320px,
+    420px 420px,
+    360px 360px,
+    480px 480px,
+    390px 390px,
+    440px 440px,
+    180px 180px;
+  background-repeat: repeat;
+}
+
+main {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    /* без анимации и так; оставляем статичный слой */
+    opacity: calc(var(--atmos-opacity) * 0.85);
+  }
+}
+
 /* ========================================
    КОНТЕЙНЕРЫ И МАКЕТ
    ======================================== */
