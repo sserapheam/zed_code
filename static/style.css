@@ -1451,14 +1451,11 @@ html.dark-theme {
   --shadow-hover: rgba(0, 0, 0, 0.4);
 }
 
-/* Принудительное применение темной темы ко всем элементам */
-html.dark-theme,
-html.dark-theme body,
-html.dark-theme * {
-  color: var(--text);
-}
-
+/* Принудительное применение темной темы ко всем элементам.
+   НЕ используем html.dark-theme * — иначе цвет насильно
+   перетирает текст на цветных фонах (hero, CTA, badges). */
 html.dark-theme body {
+  color: var(--text);
   background: var(--bg);
 }
 
@@ -2065,14 +2062,45 @@ html.dark-theme .hint-content {
    СОВРЕМЕННЫЙ ДИЗАЙН ГЛАВНОЙ СТРАНИЦЫ
    ======================================== */
 
+/* Full-bleed главная: убираем max-width контейнеров */
+.home-page .home-main {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.home-page .layout-adaptive {
+  display: block;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+}
+
+.home-page .content-wrapper {
+  display: block;
+  justify-content: stretch;
+}
+
+.home-page .content-wrapper .content {
+  max-width: none;
+  width: 100%;
+}
+
+.home-page .content {
+  padding: 0;
+}
+
 /* Hero Section */
 .hero-modern {
   position: relative;
-  min-height: 100vh;
+  min-height: calc(100vh - 72px);
+  width: 100%;
   display: flex;
   align-items: center;
   overflow: hidden;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #5b6ee1 0%, #6d3fa0 100%);
 }
 
 .hero-background {
@@ -2131,15 +2159,32 @@ html.dark-theme .hint-content {
   z-index: 2;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 var(--spacing-lg);
+  padding: 3rem var(--spacing-lg);
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--spacing-2xl);
   align-items: center;
+  width: 100%;
 }
 
-.hero-text {
-  color: white;
+/* Явные цвета на фиолетовом — и light, и dark тема */
+.home-page .hero-modern .hero-text,
+.home-page .hero-modern .hero-description,
+.home-page .hero-modern .stat-label,
+.home-page .hero-modern .hero-title,
+.home-page .hero-modern .title-gradient {
+  color: #ffffff !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background: none !important;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.2);
+}
+
+.home-page .hero-modern .stat-number {
+  color: #fde68a !important;
+  -webkit-text-fill-color: #fde68a !important;
+  background: none !important;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.35);
 }
 
 .hero-title {
@@ -2149,23 +2194,10 @@ html.dark-theme .hint-content {
   margin-bottom: var(--spacing-lg);
 }
 
-.title-gradient {
-  background: linear-gradient(45deg, #ffffff, #f0f9ff);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.title-accent {
-  color: #fbbf24;
-  text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
-}
-
 .hero-description {
   font-size: 1.25rem;
   line-height: 1.6;
   margin-bottom: var(--spacing-xl);
-  opacity: 0.9;
 }
 
 .hero-stats {
@@ -2176,20 +2208,18 @@ html.dark-theme .hint-content {
 
 .stat {
   text-align: center;
+  min-width: 4.5rem;
 }
 
 .stat-number {
   font-size: 2rem;
   font-weight: 700;
-  color: #fbbf24;
-  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.25);
 }
 
 .hero-modern .stat-label {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.92);
-  opacity: 1;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .hero-actions {
@@ -2212,27 +2242,29 @@ html.dark-theme .hint-content {
   height: 20px;
 }
 
-/* Hero Visual */
 .hero-visual {
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
-.hero-modern .code-block {
-  background: #0f172a;
+/* Демо-код всегда тёмный (не зависит от темы сайта) */
+.home-page .hero-modern .code-block,
+html.dark-theme .home-page .hero-modern .code-block,
+body.dark-theme .home-page .hero-modern .code-block {
+  background: #0f172a !important;
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.35);
   width: 100%;
   max-width: 500px;
-  padding: 0;
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  padding: 0 !important;
+  border: 1px solid rgba(148, 163, 184, 0.25) !important;
   margin: 0;
 }
 
-.hero-modern .code-header {
-  background: #1e293b;
+.home-page .hero-modern .code-header {
+  background: #1e293b !important;
   padding: var(--spacing-md);
   display: flex;
   align-items: center;
@@ -2254,22 +2286,22 @@ html.dark-theme .hint-content {
 .dot.yellow { background: #f59e0b; }
 .dot.green { background: #10b981; }
 
-.hero-modern .code-title {
-  color: #e2e8f0;
+.home-page .hero-modern .code-title {
+  color: #e2e8f0 !important;
   font-size: 0.9rem;
   font-family: var(--font-mono);
 }
 
-.hero-modern .code-content {
+.home-page .hero-modern .code-content {
   padding: var(--spacing-lg);
   font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.6;
-  background: #0f172a;
+  background: #0f172a !important;
 }
 
-.hero-modern .code-line {
-  color: #e2e8f0;
+.home-page .hero-modern .code-line {
+  color: #e2e8f0 !important;
   margin-bottom: var(--spacing-xs);
 }
 
@@ -2277,14 +2309,63 @@ html.dark-theme .hint-content {
 .code-line.indent-2 { padding-left: 4em; }
 .code-line.indent-3 { padding-left: 6em; }
 
-.hero-modern .code-keyword { color: #f472b6; }
-.hero-modern .code-function { color: #60a5fa; }
+.home-page .hero-modern .code-keyword { color: #f472b6 !important; }
+.home-page .hero-modern .code-function { color: #7dd3fc !important; }
 
-.hero-modern .hero-description {
-  color: rgba(255, 255, 255, 0.95);
+/* Нижняя часть главной — читаемые цвета в обеих темах */
+.home-page .features-section {
+  background: var(--bg);
 }
 
-/* Features Section */
+.home-page .feature-card,
+.home-page .section-card {
+  background: var(--bg-secondary);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.home-page .feature-card h3,
+.home-page .section-header h2,
+.home-page .category-card h3,
+.home-page .task-info h3,
+.home-page .leader-name {
+  color: var(--text) !important;
+}
+
+.home-page .feature-card p,
+.home-page .category-card p,
+.home-page .leader-points,
+.home-page .task-points,
+.home-page .daily-challenge-hint {
+  color: var(--text-muted);
+}
+
+.home-page .category-card,
+.home-page .task-card,
+.home-page .leader-item {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.home-page .section-link {
+  color: var(--primary);
+}
+
+.home-page .cta-section,
+.home-page .cta-section h2,
+.home-page .cta-section p {
+  color: #ffffff !important;
+}
+
+.home-page .cta-section {
+  background: linear-gradient(135deg, #2563eb 0%, #0d9488 100%);
+}
+
+.home-page .cta-section p {
+  opacity: 0.95;
+}
+
 /* Daily Challenge */
 .daily-challenge {
   max-width: 1200px;
@@ -2312,7 +2393,7 @@ html.dark-theme .hint-content {
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #7dd3fc;
+  color: #7dd3fc !important;
   margin-bottom: 0.65rem;
 }
 
@@ -2340,6 +2421,7 @@ html.dark-theme .hint-content {
   font-weight: 700;
   font-family: var(--font-problem, var(--font-family));
   line-height: 1.25;
+  color: #ffffff !important;
 }
 
 .daily-challenge-meta {
@@ -2348,20 +2430,21 @@ html.dark-theme .hint-content {
   gap: 0.6rem;
   flex-wrap: wrap;
   margin: 0;
-  opacity: 0.92;
   font-size: 0.92rem;
+  color: #e2e8f0 !important;
 }
 
 .daily-challenge-topic {
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
   font-family: var(--font-mono);
   font-size: 0.8rem;
+  color: #f8fafc !important;
 }
 
 .daily-challenge-hint {
-  color: #cbd5e1;
+  color: #cbd5e1 !important;
   font-size: 0.85rem;
 }
 
@@ -2401,6 +2484,10 @@ html.dark-theme .hint-content {
   background: var(--bg-secondary);
 }
 
+.hero-modern .hero-description {
+  color: rgba(255, 255, 255, 0.95);
+}
+
 .features-grid {
   max-width: 1200px;
   margin: 0 auto;
@@ -2414,9 +2501,11 @@ html.dark-theme .hint-content {
   text-align: center;
   padding: var(--spacing-xl);
   border-radius: var(--radius-lg);
-  background: white;
+  background: var(--bg-secondary);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 
 .feature-card:hover {
@@ -2464,11 +2553,12 @@ html.dark-theme .hint-content {
 }
 
 .section-card {
-  background: white;
+  background: var(--bg-secondary);
   border-radius: var(--radius-lg);
   padding: var(--spacing-xl);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
   border: 1px solid var(--border);
+  color: var(--text);
 }
 
 .section-header {
