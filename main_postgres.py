@@ -1,10 +1,11 @@
 import os
+import re
 import json
 import traceback
 import html
 from datetime import datetime
 from multiprocessing import Process, Queue
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
@@ -323,14 +324,51 @@ def create_app() -> Flask:
         results = execute_query(g.db, sql, params)
         return render_template("search.html", q=q, difficulty=difficulty, topic=topic, results=results)
 
+    USERNAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{2,31}$")
+    PASSWORD_MIN_LEN = 8
+    PASSWORD_MAX_LEN = 128
+    RESERVED_USERNAMES = frozenset({
+        "admin", "administrator", "root", "system", "support",
+        "moderator", "mod", "null", "undefined", "api", "www",
+        "help", "official", "zedcode", "zed_code",
+    })
+
+    def _validate_registration(username: str, password: str, password2: str) -> Optional[str]:
+        if not username or not password:
+            return "Введите логин и пароль"
+        if len(username) < 3 or len(username) > 32:
+            return "Логин: от 3 до 32 символов"
+        if not USERNAME_RE.match(username):
+            return (
+                "Логин: латинские буквы, цифры и _; "
+                "должен начинаться с буквы"
+            )
+        if username.lower() in RESERVED_USERNAMES:
+            return "Это имя занято системой, выберите другое"
+        if password != password2:
+            return "Пароли не совпадают"
+        if len(password) < PASSWORD_MIN_LEN:
+            return f"Пароль: минимум {PASSWORD_MIN_LEN} символов"
+        if len(password) > PASSWORD_MAX_LEN:
+            return f"Пароль: максимум {PASSWORD_MAX_LEN} символов"
+        if password.lower() == username.lower():
+            return "Пароль не должен совпадать с логином"
+        if not re.search(r"[A-Za-zА-Яа-я]", password) or not re.search(r"\d", password):
+            return "Пароль: хотя бы одна буква и одна цифра"
+        if password.strip() != password:
+            return "Пароль не должен начинаться или заканчиваться пробелом"
+        return None
+
     @app.route("/register", methods=["GET", "POST"])
     def register():
         if request.method == "POST":
             username = (request.form.get("username") or "").strip()
             password = request.form.get("password") or ""
-            if not username or not password:
-                flash("Введите логин и пароль", "error")
-                return render_template("register.html")
+            password2 = request.form.get("password2") or ""
+            error = _validate_registration(username, password, password2)
+            if error:
+                flash(error, "error")
+                return render_template("register.html", username=username)
             try:
                 cursor = get_cursor(g.db)
                 cursor.execute(
@@ -342,8 +380,13 @@ def create_app() -> Flask:
                 flash("Регистрация прошла успешно. Войдите в аккаунт.", "success")
                 return redirect(url_for("login"))
             except psycopg2.IntegrityError:
+                try:
+                    g.db.rollback()
+                except Exception:
+                    pass
                 flash("Пользователь с таким именем уже существует", "error")
-        return render_template("register.html")
+                return render_template("register.html", username=username)
+        return render_template("register.html", username="")
 
     @app.route("/login", methods=["GET", "POST"])
     def login():

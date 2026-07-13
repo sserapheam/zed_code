@@ -1,30 +1,65 @@
 {% extends 'base.html' %}
 {% block title %}Регистрация{% endblock %}
 {% block content %}
-  <div class="panel" style="max-width: 400px; margin: 0 auto;">
-    <div style="text-align: center; margin-bottom: 2rem;">
-      <h1 style="margin-bottom: 0.5rem;">Создать аккаунт</h1>
+  <div class="panel auth-panel">
+    <div class="auth-header">
+      <h1>Создать аккаунт</h1>
       <p class="muted">Начните решать задачи прямо сейчас</p>
     </div>
     
-    <form method="post" class="form">
+    <form method="post" class="form" autocomplete="off">
       <label>
         Логин
-        <input type="text" name="username" required placeholder="Придумайте логин" />
+        <input
+          type="text"
+          name="username"
+          required
+          minlength="3"
+          maxlength="32"
+          pattern="[A-Za-z][A-Za-z0-9_]{2,31}"
+          title="Латиница, цифры и _; начинается с буквы; 3–32 символа"
+          placeholder="например: sergei_dev"
+          value="{{ username or '' }}"
+          autocomplete="username"
+        />
       </label>
+      <p class="field-hint muted">3–32 символа: латиница, цифры и _; начинается с буквы</p>
+
       <label>
         Пароль
-        <input type="password" name="password" required placeholder="Придумайте пароль" />
+        <input
+          type="password"
+          name="password"
+          required
+          minlength="8"
+          maxlength="128"
+          placeholder="Минимум 8 символов"
+          autocomplete="new-password"
+        />
       </label>
+      <p class="field-hint muted">Минимум 8 символов, хотя бы одна буква и одна цифра</p>
+
+      <label>
+        Повторите пароль
+        <input
+          type="password"
+          name="password2"
+          required
+          minlength="8"
+          maxlength="128"
+          placeholder="Повторите пароль"
+          autocomplete="new-password"
+        />
+      </label>
+
       <div class="actions">
-        <button type="submit" class="btn" style="width: 100%; justify-content: center;">Создать аккаунт</button>
+        <button type="submit" class="btn btn-block">Создать аккаунт</button>
       </div>
     </form>
     
-    <div style="text-align: center; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
+    <div class="auth-footer">
       <p class="muted">Уже есть аккаунт?</p>
-      <a href="{{ url_for('login') }}" class="btn secondary" style="width: 100%; justify-content: center;">Войти</a>
+      <a href="{{ url_for('login') }}" class="btn secondary btn-block">Войти</a>
     </div>
   </div>
 {% endblock %}
-

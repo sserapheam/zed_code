@@ -5144,3 +5144,35 @@ html.dark-theme .CodeMirror .CodeMirror-linenumber {
   background: rgba(245, 158, 11, 0.18);
   border-color: rgba(245, 158, 11, 0.35);
 }
+
+.auth-panel {
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.auth-header h1 {
+  margin-bottom: 0.5rem;
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.field-hint {
+  margin: -0.35rem 0 0.85rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.btn-block {
+  width: 100%;
+  justify-content: center;
+}
