@@ -21,28 +21,40 @@
         </p>
         <div class="hero-stats">
           <div class="stat">
-            <div class="stat-number">{{ recent_problems|length }}+</div>
+            <div class="stat-number">{{ platform_stats.problems }}</div>
             <div class="stat-label">Задач</div>
           </div>
           <div class="stat">
-            <div class="stat-number">{{ featured_topics|length }}+</div>
+            <div class="stat-number">{{ platform_stats.topics }}</div>
             <div class="stat-label">Тем</div>
           </div>
           <div class="stat">
-            <div class="stat-number">{{ top|length }}+</div>
+            <div class="stat-number">{{ platform_stats.users }}</div>
             <div class="stat-label">Участников</div>
           </div>
         </div>
         <div class="hero-actions">
-          <a class="btn btn-primary btn-large" href="{{ url_for('login') }}">
-            <span>Начать обучение</span>
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
-            </svg>
-          </a>
-          <a class="btn btn-secondary btn-large" href="{{ url_for('problems') }}">
-            <span>Смотреть задачи</span>
-          </a>
+          {% if session.get('user_id') %}
+            <a class="btn btn-primary btn-large" href="{% if daily_challenge %}{{ url_for('problem', problem_id=daily_challenge['problem_id']) }}{% else %}{{ url_for('problems') }}{% endif %}">
+              <span>Задача дня</span>
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+              </svg>
+            </a>
+            <a class="btn btn-secondary btn-large" href="{{ url_for('problems') }}">
+              <span>Все задачи</span>
+            </a>
+          {% else %}
+            <a class="btn btn-primary btn-large" href="{{ url_for('login') }}">
+              <span>Начать обучение</span>
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+              </svg>
+            </a>
+            <a class="btn btn-secondary btn-large" href="{{ url_for('problems') }}">
+              <span>Смотреть задачи</span>
+            </a>
+          {% endif %}
         </div>
       </div>
       <div class="hero-visual">
@@ -69,6 +81,33 @@
       </div>
     </div>
   </div>
+
+  {% if daily_challenge %}
+  <!-- Daily Challenge — заметный вход в практику -->
+  <section class="daily-challenge" aria-label="Задача дня">
+    <div class="daily-challenge-inner">
+      <div class="daily-challenge-badge">Задача дня</div>
+      <div class="daily-challenge-body">
+        <div class="daily-challenge-copy">
+          <h2 class="daily-challenge-title">{{ daily_challenge['title'] }}</h2>
+          <p class="daily-challenge-meta">
+            <span class="task-level {{ daily_challenge['difficulty'] or 'Easy' }}">{{ daily_challenge['difficulty'] or 'Easy' }}</span>
+            {% if daily_challenge['topic'] %}
+              <span class="daily-challenge-topic">{{ daily_challenge['topic'] }}</span>
+            {% endif %}
+            <span class="daily-challenge-hint">одна задача · обновляется каждый день</span>
+          </p>
+        </div>
+        <a class="btn btn-primary daily-challenge-cta" href="{{ url_for('problem', problem_id=daily_challenge['problem_id']) }}">
+          Решить сейчас
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </section>
+  {% endif %}
 
   <!-- Features Section -->
   <div class="features-section">

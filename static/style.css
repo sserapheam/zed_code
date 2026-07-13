@@ -2272,6 +2272,117 @@ html.dark-theme .hint-content {
 .code-function { color: #60a5fa; }
 
 /* Features Section */
+/* Daily Challenge */
+.daily-challenge {
+  max-width: 1200px;
+  margin: -2rem auto var(--spacing-2xl);
+  padding: 0 var(--spacing-lg);
+  position: relative;
+  z-index: 3;
+}
+
+.daily-challenge-inner {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 55%, #0ea5e9 140%);
+  color: #f8fafc;
+  border-radius: 18px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  animation: daily-rise 0.55s ease-out both;
+}
+
+.daily-challenge-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  margin-bottom: 0.65rem;
+}
+
+.daily-challenge-badge::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #22d3ee;
+  box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.7);
+  animation: daily-pulse 1.8s ease-out infinite;
+}
+
+.daily-challenge-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.daily-challenge-title {
+  margin: 0 0 0.55rem;
+  font-size: clamp(1.2rem, 2.2vw, 1.55rem);
+  font-weight: 700;
+  font-family: var(--font-problem, var(--font-family));
+  line-height: 1.25;
+}
+
+.daily-challenge-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0;
+  opacity: 0.92;
+  font-size: 0.92rem;
+}
+
+.daily-challenge-topic {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.daily-challenge-hint {
+  color: #cbd5e1;
+  font-size: 0.85rem;
+}
+
+.daily-challenge-cta {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dark-theme .daily-challenge-inner {
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes daily-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes daily-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.65); }
+  70% { box-shadow: 0 0 0 8px rgba(34, 211, 238, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); }
+}
+
+@media (max-width: 720px) {
+  .daily-challenge {
+    margin-top: -1rem;
+  }
+
+  .daily-challenge-cta {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .features-section {
   padding: var(--spacing-2xl) 0;
   background: var(--bg-secondary);

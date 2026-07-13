@@ -245,11 +245,49 @@ def create_app() -> Flask:
         top = execute_query(g.db,
             "SELECT username, display_name, avatar_path, points FROM users ORDER BY points DESC, id ASC LIMIT 5"
         )
+
+        # Реальная статистика для hero (раньше показывали размер LIMIT-выборок)
+        stats_row = execute_one(
+            g.db,
+            """
+            SELECT
+              (SELECT COUNT(*) FROM leetcode_problems_with_tests) AS problems_count,
+              (SELECT COUNT(DISTINCT topic) FROM leetcode_problems_with_tests
+               WHERE topic IS NOT NULL AND topic <> '') AS topics_count,
+              (SELECT COUNT(*) FROM users) AS users_count
+            """,
+        )
+        platform_stats = {
+            "problems": int(stats_row["problems_count"] or 0) if stats_row else 0,
+            "topics": int(stats_row["topics_count"] or 0) if stats_row else 0,
+            "users": int(stats_row["users_count"] or 0) if stats_row else 0,
+        }
+
+        # Задача дня — стабильная на календарный день
+        daily_challenge = None
+        if platform_stats["problems"] > 0:
+            from datetime import date
+
+            day_offset = date.today().toordinal() % platform_stats["problems"]
+            daily_challenge = execute_one(
+                g.db,
+                """
+                SELECT problem_id, title, difficulty, topic
+                FROM leetcode_problems_with_tests
+                ORDER BY problem_id
+                OFFSET %s
+                LIMIT 1
+                """,
+                (day_offset,),
+            )
+
         return render_template(
             "index.html",
             featured_topics=featured_topics,
             recent_problems=recent_problems,
             top=top,
+            platform_stats=platform_stats,
+            daily_challenge=daily_challenge,
         )
 
     @app.route("/search")
