@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=sec-high-1" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=med-1" />
     <meta name="csrf-token" content="{{ csrf_token() }}" />
     
     <!-- Предотвращение моргания темы сайта -->
@@ -43,6 +43,7 @@
 
         <div class="nav-menu" id="nav-menu">
           <a class="btn secondary" href="{{ url_for('problems') }}">Задачи</a>
+          <a class="btn secondary" href="{{ url_for('leaderboard') }}">Лидерборд</a>
           <form class="search" method="get" action="{{ url_for('search') }}">
             <input type="text" name="q" placeholder="Поиск задач..." value="{{ request.args.get('q','') }}" />
           </form>

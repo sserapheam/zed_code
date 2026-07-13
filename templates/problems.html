@@ -89,6 +89,18 @@
         <span class="stat-item">{{ topics|sum(attribute='problem_count') }} задач</span>
         <span class="stat-item">{{ topics|length }} тем</span>
       </div>
+      <div class="problems-filters">
+        <div class="filter-tabs">
+          <a href="{{ url_for('problems') }}"
+             class="filter-tab {{ 'active' if not difficulty_filter else '' }}">Все</a>
+          <a href="{{ url_for('problems', difficulty='Easy') }}"
+             class="filter-tab {{ 'active' if difficulty_filter == 'Easy' else '' }}">Легкие</a>
+          <a href="{{ url_for('problems', difficulty='Medium') }}"
+             class="filter-tab {{ 'active' if difficulty_filter == 'Medium' else '' }}">Средние</a>
+          <a href="{{ url_for('problems', difficulty='Hard') }}"
+             class="filter-tab {{ 'active' if difficulty_filter == 'Hard' else '' }}">Сложные</a>
+        </div>
+      </div>
     </div>
 
     <!-- Компактные кнопки тем -->

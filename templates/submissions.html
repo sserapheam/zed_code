@@ -3,6 +3,7 @@
 {% block content %}
   <a href="{{ url_for('problems') }}" class="back">← Назад к задачам</a>
   <h1>Мои отправки</h1>
+  <p class="muted" style="margin-bottom: 1rem;">Всего: {{ total or 0 }}</p>
   {% if submissions %}
     <table class="table">
       <thead><tr><th>ID</th><th>Задача</th><th>Сложность</th><th>Статус</th><th>Время</th></tr></thead>
@@ -12,7 +13,7 @@
             <td><a href="{{ url_for('submission_detail', solution_id=s['id']) }}">{{ s['id'] }}</a></td>
             <td>
               {% if s.get('problem_id') %}
-                <a href="{{ url_for('problem', problem_id=s['problem_id']) }}" style="color: var(--primary); text-decoration: none;">{{ s['problem_title'] }}</a>
+                <a href="{{ url_for('problem', problem_id=s['problem_id']) }}">{{ s['problem_title'] }}</a>
               {% else %}
                 {{ s['problem_title'] }}
               {% endif %}
@@ -24,8 +25,18 @@
         {% endfor %}
       </tbody>
     </table>
+    {% if total_pages and total_pages > 1 %}
+      <div class="pagination actions" style="margin-top: 1rem;">
+        {% if page > 1 %}
+          <a class="btn secondary" href="{{ url_for('submissions', page=page-1) }}">← Назад</a>
+        {% endif %}
+        <span class="muted">Стр. {{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}
+          <a class="btn secondary" href="{{ url_for('submissions', page=page+1) }}">Вперёд →</a>
+        {% endif %}
+      </div>
+    {% endif %}
   {% else %}
     <p>Ещё нет отправок.</p>
   {% endif %}
 {% endblock %}
-

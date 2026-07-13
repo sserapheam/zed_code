@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block title %}{{ user['display_name'] or user['username'] }} — zedcode{% endblock %}
+{% block body_class %}profile-page{% endblock %}
+{% block content %}
+  <div class="profile-page-header">
+    <h1>{{ user['display_name'] or user['username'] }}</h1>
+    <p class="muted">@{{ user['username'] }}</p>
+  </div>
+
+  <div class="profile-header">
+    <div>
+      {% if user['avatar_path'] %}
+        <img src="{{ url_for('static', filename=user['avatar_path']) }}" alt="avatar" class="avatar-large"/>
+      {% else %}
+        <div class="avatar-placeholder">нет фото</div>
+      {% endif %}
+    </div>
+    <div class="profile-info">
+      {% if user['bio'] %}
+        <p>{{ user['bio'] }}</p>
+      {% else %}
+        <p class="muted">Пока нет описания</p>
+      {% endif %}
+      {% if is_own %}
+        <p style="margin-top: 0.75rem;"><a href="{{ url_for('profile') }}" class="btn secondary">Редактировать профиль</a></p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="profile-stats">
+    <div class="stat-card">
+      <div class="stat-value">{{ user['points'] or 0 }}</div>
+      <div class="stat-label">Баллы</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">{{ submissions_count or 0 }}</div>
+      <div class="stat-label">Отправок</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">{{ solved_count or 0 }}</div>
+      <div class="stat-label">Решено</div>
+    </div>
+  </div>
+
+  <div class="panel activity-panel">
+    <div class="activity-panel-head">
+      <h2>Активность</h2>
+      <p class="muted">{{ activity_total_label }} за последний год</p>
+    </div>
+    <div class="activity-graph-wrap">
+      <div class="activity-graph" style="--weeks: {{ activity_weeks|length }}">
+        <div class="activity-months" aria-hidden="true">
+          {% for m in activity_months %}
+            <span class="activity-month" style="grid-column: {{ m.week_index + 1 }}">{{ m.label }}</span>
+          {% endfor %}
+        </div>
+        <div class="activity-body">
+          <div class="activity-wdays" aria-hidden="true">
+            {% for d in activity_weekday_labels %}
+              <span class="activity-wday{% if not d.show %} is-empty{% endif %}">{{ d.text if d.show else '' }}</span>
+            {% endfor %}
+          </div>
+          <div class="activity-weeks">
+            {% for week in activity_weeks %}
+              <div class="activity-week">
+                {% for day in week %}
+                  <div
+                    class="activity-cell activity-level-{{ day.level }}{% if day.future %} is-future{% endif %}"
+                    title="{{ day.label }}"
+                  ></div>
+                {% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="activity-legend">
+          <span class="muted">Меньше</span>
+          <div class="activity-cell activity-level-0"></div>
+          <div class="activity-cell activity-level-1"></div>
+          <div class="activity-cell activity-level-2"></div>
+          <div class="activity-cell activity-level-3"></div>
+          <div class="activity-cell activity-level-4"></div>
+          <span class="muted">Больше</span>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

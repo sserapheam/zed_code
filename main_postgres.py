@@ -524,37 +524,47 @@ def create_app() -> Flask:
         # Если не выбрана конкретная тема, получаем только первые 50 задач
         all_problems = []
         if not selected_topic:
+            where_extra = ""
+            params_all = []
+            if difficulty_filter in {"Easy", "Medium", "Hard"}:
+                where_extra = " WHERE difficulty = %s"
+                params_all.append(difficulty_filter)
             if user_id:
-                all_problems = execute_query(g.db,
-                    """
+                all_problems = execute_query(
+                    g.db,
+                    f"""
                     SELECT problem_id, title, difficulty, topic_tags,
-                    CASE 
+                    CASE
                         WHEN EXISTS(
-                            SELECT 1 FROM problem_test_results ptr 
-                            WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id 
-                            AND ptr.user_id = %s AND ptr.status='passed'
+                            SELECT 1 FROM problem_test_results ptr
+                            WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id
+                              AND ptr.user_id = %s AND ptr.status='passed'
                         ) THEN 1
                         WHEN EXISTS(
-                            SELECT 1 FROM problem_test_results ptr 
-                            WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id 
-                            AND ptr.user_id = %s
+                            SELECT 1 FROM problem_test_results ptr
+                            WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id
+                              AND ptr.user_id = %s
                         ) THEN 0
                         ELSE NULL
                     END AS last_passed
                     FROM leetcode_problems_with_tests
+                    {where_extra}
                     ORDER BY problem_id
                     LIMIT 50
                     """,
-                    (user_id, user_id)
+                    ([user_id, user_id] + params_all),
                 )
             else:
-                all_problems = execute_query(g.db,
-                    """
+                all_problems = execute_query(
+                    g.db,
+                    f"""
                     SELECT problem_id, title, difficulty, topic_tags, NULL AS last_passed
                     FROM leetcode_problems_with_tests
+                    {where_extra}
                     ORDER BY problem_id
                     LIMIT 50
-                    """
+                    """,
+                    params_all,
                 )
         
         return render_template("problems.html", 
@@ -1820,19 +1830,79 @@ def create_app() -> Flask:
         user_id = session.get("user_id")
         if not user_id:
             return redirect(url_for("login"))
-        subs = execute_query(g.db,
-            """
-            SELECT ptr.id, p.problem_id, p.title AS problem_title, 
-                   CASE WHEN ptr.status='passed' THEN 1 ELSE 0 END as passed, 
-                   ptr.created_at, p.difficulty
-            FROM problem_test_results ptr 
-            JOIN leetcode_problems_with_tests p ON p.problem_id = ptr.problem_id 
-            WHERE ptr.user_id = %s 
-            ORDER BY ptr.created_at DESC, ptr.id DESC
-            """,
+        try:
+            page = max(1, int(request.args.get("page", 1)))
+        except (TypeError, ValueError):
+            page = 1
+        per_page = 30
+        offset = (page - 1) * per_page
+        total_row = execute_one(
+            g.db,
+            "SELECT COUNT(*) AS total FROM problem_test_results WHERE user_id=%s",
             (user_id,),
         )
-        return render_template("submissions.html", submissions=subs)
+        total = int((total_row or {}).get("total") or 0)
+        subs = execute_query(
+            g.db,
+            """
+            SELECT ptr.id, p.problem_id, p.title AS problem_title,
+                   CASE WHEN ptr.status='passed' THEN 1 ELSE 0 END as passed,
+                   ptr.created_at, p.difficulty
+            FROM problem_test_results ptr
+            JOIN leetcode_problems_with_tests p ON p.problem_id = ptr.problem_id
+            WHERE ptr.user_id = %s
+            ORDER BY ptr.created_at DESC, ptr.id DESC
+            LIMIT %s OFFSET %s
+            """,
+            (user_id, per_page, offset),
+        )
+        total_pages = (total + per_page - 1) // per_page if total else 1
+        return render_template(
+            "submissions.html",
+            submissions=subs,
+            page=page,
+            total_pages=total_pages,
+            total=total,
+        )
+
+    @app.route("/u/<username>")
+    def public_profile(username: str):
+        username = (username or "").strip()
+        user = execute_one(
+            g.db,
+            """
+            SELECT id, username, display_name, bio, avatar_path, points
+            FROM users WHERE username=%s
+            """,
+            (username,),
+        )
+        if not user:
+            flash("Пользователь не найден", "error")
+            return redirect(url_for("leaderboard"))
+        stats = execute_one(
+            g.db,
+            """
+            SELECT
+              (SELECT COUNT(*) FROM problem_test_results WHERE user_id=%s) AS submissions_count,
+              (SELECT COUNT(DISTINCT problem_id) FROM problem_test_results
+               WHERE user_id=%s AND status='passed') AS solved_count
+            """,
+            (user["id"], user["id"]),
+        )
+        activity = _build_activity_calendar(user["id"])
+        is_own = session.get("user_id") == user["id"]
+        return render_template(
+            "public_profile.html",
+            user=user,
+            submissions_count=(stats or {}).get("submissions_count") or 0,
+            solved_count=(stats or {}).get("solved_count") or 0,
+            activity_weeks=activity["weeks"],
+            activity_months=activity["months"],
+            activity_total=activity["total"],
+            activity_total_label=activity["total_label"],
+            activity_weekday_labels=activity["weekday_labels"],
+            is_own=is_own,
+        )
 
     @app.route("/submission/<int:solution_id>")
     def submission_detail(solution_id: int):

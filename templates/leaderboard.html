@@ -24,7 +24,9 @@
               <div class="avatar-placeholder-small">👤</div>
             {% endif %}
             <div class="user-details">
-              <div class="username">{{ u['display_name'] or u['username'] }}</div>
+              <div class="username">
+                <a href="{{ url_for('public_profile', username=u['username']) }}">{{ u['display_name'] or u['username'] }}</a>
+              </div>
               <div class="user-stats">
                 <span class="points">{{ u['points'] or 0 }} баллов</span>
                 {% if u['solved_count'] %}
