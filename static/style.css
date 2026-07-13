@@ -2181,11 +2181,14 @@ html.dark-theme .hint-content {
   font-size: 2rem;
   font-weight: 700;
   color: #fbbf24;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.25);
 }
 
-.stat-label {
+.hero-modern .stat-label {
   font-size: 0.9rem;
-  opacity: 0.8;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+  opacity: 1;
 }
 
 .hero-actions {
@@ -2215,17 +2218,20 @@ html.dark-theme .hint-content {
   align-items: center;
 }
 
-.code-block {
-  background: #1e293b;
+.hero-modern .code-block {
+  background: #0f172a;
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.35);
   width: 100%;
   max-width: 500px;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  margin: 0;
 }
 
-.code-header {
-  background: #334155;
+.hero-modern .code-header {
+  background: #1e293b;
   padding: var(--spacing-md);
   display: flex;
   align-items: center;
@@ -2247,19 +2253,21 @@ html.dark-theme .hint-content {
 .dot.yellow { background: #f59e0b; }
 .dot.green { background: #10b981; }
 
-.code-title {
+.hero-modern .code-title {
   color: #e2e8f0;
   font-size: 0.9rem;
+  font-family: var(--font-mono);
 }
 
-.code-content {
+.hero-modern .code-content {
   padding: var(--spacing-lg);
   font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.6;
+  background: #0f172a;
 }
 
-.code-line {
+.hero-modern .code-line {
   color: #e2e8f0;
   margin-bottom: var(--spacing-xs);
 }
@@ -2268,8 +2276,12 @@ html.dark-theme .hint-content {
 .code-line.indent-2 { padding-left: 4em; }
 .code-line.indent-3 { padding-left: 6em; }
 
-.code-keyword { color: #f472b6; }
-.code-function { color: #60a5fa; }
+.hero-modern .code-keyword { color: #f472b6; }
+.hero-modern .code-function { color: #60a5fa; }
+
+.hero-modern .hero-description {
+  color: rgba(255, 255, 255, 0.95);
+}
 
 /* Features Section */
 /* Daily Challenge */
@@ -3462,6 +3474,16 @@ html.dark-theme .hint-content {
   margin: 0.5rem 0;
   border: 1px solid var(--border);
   text-align: left;
+}
+
+/* Не применяем «светлый» .code-block из описания задач к demo-блоку в hero */
+.problem-content .code-block,
+.description-text .code-block {
+  background: var(--bg-secondary);
+  padding: 1.5rem;
+  border-radius: var(--radius-sm);
+  margin: 0.5rem 0;
+  border: 1px solid var(--border);
 }
 
 .code-block pre {

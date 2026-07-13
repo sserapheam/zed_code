@@ -3,7 +3,6 @@ name: Deploy to VPS
 on:
   push:
     branches:
-      - feature
       - main
   workflow_dispatch:
 
@@ -22,4 +21,4 @@ jobs:
           command_timeout: 20m
           script: |
             chmod +x /opt/zed_code/scripts/deploy.sh
-            /opt/zed_code/scripts/deploy.sh "${{ github.ref_name }}"
+            /opt/zed_code/scripts/deploy.sh main

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_DIR="/opt/zed_code"
-BRANCH="${1:-feature}"
+BRANCH="${1:-main}"
 
 cd "$APP_DIR"
 
