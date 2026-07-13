@@ -66,35 +66,38 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Атмосфера фона: мягкие цветовые пятна + «пыль» (без анимации).
-   Предыдущая версия была почти незаметна. */
+/* Атмосфера фона: мягкие цветовые пятна + «пыль» (без анимации). */
 :root {
-  --atmos-wash-1: rgba(59, 130, 246, 0.12);
-  --atmos-wash-2: rgba(16, 185, 129, 0.09);
-  --atmos-dot: rgba(51, 65, 85, 0.35);
-  --atmos-dot-bright: rgba(30, 41, 59, 0.22);
-  --atmos-dots-opacity: 0.65;
+  --atmos-wash-1: rgba(59, 130, 246, 0.2);
+  --atmos-wash-2: rgba(16, 185, 129, 0.15);
+  --atmos-wash-3: rgba(99, 102, 241, 0.1);
+  --atmos-dot: rgba(51, 65, 85, 0.28);
+  --atmos-dot-bright: rgba(37, 99, 235, 0.22);
+  --atmos-dots-opacity: 0.85;
 }
 
 html.dark-theme,
 .dark-theme {
   --atmos-wash-1: rgba(96, 165, 250, 0.18);
   --atmos-wash-2: rgba(52, 211, 153, 0.12);
+  --atmos-wash-3: rgba(129, 140, 248, 0.1);
   --atmos-dot: rgba(226, 232, 240, 0.45);
   --atmos-dot-bright: rgba(255, 255, 255, 0.32);
   --atmos-dots-opacity: 0.9;
 }
 
 body.problem-page {
-  --atmos-wash-1: rgba(59, 130, 246, 0.06);
-  --atmos-wash-2: rgba(16, 185, 129, 0.04);
-  --atmos-dots-opacity: 0.4;
+  --atmos-wash-1: rgba(59, 130, 246, 0.1);
+  --atmos-wash-2: rgba(16, 185, 129, 0.07);
+  --atmos-wash-3: rgba(99, 102, 241, 0.05);
+  --atmos-dots-opacity: 0.5;
 }
 
 html.dark-theme body.problem-page,
 body.dark-theme.problem-page {
   --atmos-wash-1: rgba(96, 165, 250, 0.1);
   --atmos-wash-2: rgba(52, 211, 153, 0.06);
+  --atmos-wash-3: rgba(129, 140, 248, 0.05);
   --atmos-dots-opacity: 0.6;
 }
 
@@ -108,7 +111,8 @@ body::before {
     radial-gradient(ellipse 95% 60% at 0% 0%, var(--atmos-wash-1), transparent 58%),
     radial-gradient(ellipse 80% 55% at 100% 0%, var(--atmos-wash-2), transparent 52%),
     radial-gradient(ellipse 70% 45% at 85% 100%, var(--atmos-wash-1), transparent 55%),
-    radial-gradient(ellipse 55% 40% at 10% 90%, var(--atmos-wash-2), transparent 50%);
+    radial-gradient(ellipse 55% 40% at 10% 90%, var(--atmos-wash-2), transparent 50%),
+    radial-gradient(ellipse 50% 35% at 50% 40%, var(--atmos-wash-3), transparent 60%);
 }
 
 body::after {
