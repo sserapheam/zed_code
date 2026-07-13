@@ -77,10 +77,15 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - DATABASE_URL=postgresql://admin:${DB_PASSWORD}@postgres:5432/coding_platform
       - REDIS_URL=redis://redis:6379/0
+      - FLASK_SECRET=${FLASK_SECRET}
+      - REQUIRE_FLASK_SECRET=true
+      - FLASK_ENV=production
     # Наружу только через nginx
     expose:
       - "5000"
     volumes:
+      # docker.sock нужен, пока judge крутится внутри web (USE_DOCKER).
+      # Долгосрочно: вынести выполнение только в celery_worker и убрать sock у web.
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
     command: gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 main_postgres:app

@@ -88,6 +88,7 @@
   <div class="panel">
     <h2>Редактировать профиль</h2>
     <form method="post" enctype="multipart/form-data" class="form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <input type="hidden" name="form_action" value="update_profile" />
       <label>
         Отображаемое имя
@@ -114,6 +115,7 @@
     <h2>Смена пароля</h2>
     <p class="muted profile-password-lead">После смены используйте новый пароль при следующем входе.</p>
     <form method="post" class="form" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <input type="hidden" name="form_action" value="change_password" />
       <label>
         Текущий пароль

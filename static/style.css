@@ -5505,3 +5505,26 @@ html.dark-theme .activity-cell,
     --gap: 2px;
   }
 }
+
+.nav-logout-form {
+  margin: 0;
+  padding: 0;
+}
+
+.nav-logout-form .nav-logout {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.55rem 0.75rem;
+  border-radius: 6px;
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.nav-logout-form .nav-logout:hover {
+  background: var(--bg);
+}

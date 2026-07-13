@@ -9,6 +9,7 @@
     </div>
     
     <form method="post" class="form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <label>
         Логин
         <input type="text" name="username" required placeholder="Введите логин" />

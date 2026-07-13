@@ -3,11 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{% block title %}Учебный тренажёр{% endblock %}</title>
+    <title>{% block title %}zedcode{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=activity-1" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=sec-high-1" />
+    <meta name="csrf-token" content="{{ csrf_token() }}" />
     
     <!-- Предотвращение моргания темы сайта -->
     <script>
@@ -58,7 +59,10 @@
                 <a href="{{ url_for('leaderboard') }}">Лидерборд</a>
                 <a href="{{ url_for('submissions') }}">Отправки</a>
                 <a href="{{ url_for('profile') }}">Профиль</a>
-                <a href="{{ url_for('logout') }}" class="nav-logout">Выход</a>
+                <form method="post" action="{{ url_for('logout') }}" class="nav-logout-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                  <button type="submit" class="nav-logout">Выход</button>
+                </form>
               </div>
             </div>
           {% else %}
@@ -106,6 +110,18 @@
       </div>
     </main>
     <script>
+      function getCsrfToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : '';
+      }
+
+      function getCsrfHeaders(extra) {
+        return Object.assign({
+          'X-CSRFToken': getCsrfToken(),
+          'X-Requested-With': 'XMLHttpRequest'
+        }, extra || {});
+      }
+
       function toggleCategory(catId) {
         const element = document.getElementById(catId);
         const header = element.previousElementSibling;

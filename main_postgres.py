@@ -25,8 +25,10 @@ from flask import (
     flash,
     jsonify,
 )
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+import bleach
 
 # Импорт для работы с PostgreSQL
 try:
@@ -66,9 +68,22 @@ POSTGRES_CONFIG = _build_postgres_config()
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET", "dev-secret-change-me")
+    secret = (os.environ.get("FLASK_SECRET") or "").strip()
+    if not secret or secret == "dev-secret-change-me":
+        if os.environ.get("FLASK_ENV", "").lower() == "production" or os.environ.get("REQUIRE_FLASK_SECRET", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            raise RuntimeError("FLASK_SECRET must be set to a strong random value")
+        secret = secret or "dev-secret-change-me"
+        print("WARNING: using insecure FLASK_SECRET — set a strong FLASK_SECRET in .env")
+    app.config["SECRET_KEY"] = secret
+    app.config["WTF_CSRF_TIME_LIMIT"] = None
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB uploads
     app.config["UPLOAD_FOLDER"] = os.path.join(os.path.dirname(__file__), "static", "uploads")
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+    csrf = CSRFProtect(app)
     
     # Настройка логирования для Docker операций
     import logging
@@ -82,17 +97,17 @@ def create_app() -> Flask:
     def clean_html_entities(text):
         if not text:
             return text
-        # Декодируем HTML-сущности
+        # Декодируем HTML-сущности, затем экранируем для безопасной вставки
         text = html.unescape(text)
-        # Заменяем &nbsp; на обычные пробелы
-        text = text.replace('&nbsp;', ' ')
-        
-        # Красивое форматирование для задач
+        text = text.replace('\xa0', ' ').replace('&nbsp;', ' ')
+
+        def esc(s: str) -> str:
+            return html.escape(str(s), quote=True)
+
         import re
         
         # Сначала разбиваем текст на части
         parts = []
-        current_part = ""
         
         # Разбиваем по ключевым словам
         keywords = ['Example \\d+:', 'Input:', 'Output:', 'Explanation:', 'Constraints:', 'Follow-up:']
@@ -103,7 +118,7 @@ def create_app() -> Flask:
         
         if not matches:
             # Если нет ключевых слов, возвращаем как есть
-            return f'<p class="description-paragraph">{text}</p>'
+            return f'<p class="description-paragraph">{esc(text)}</p>'
         
         # Обрабатываем каждую секцию
         last_end = 0
@@ -140,33 +155,41 @@ def create_app() -> Flask:
         
         for part in parts:
             if part[0] == 'text':
-                html_content.append(f'<p class="description-paragraph">{part[1]}</p>')
+                html_content.append(f'<p class="description-paragraph">{esc(part[1])}</p>')
             elif part[0] == 'example':
                 if in_example:
                     html_content.append('</div>')
-                html_content.append(f'<div class="example-section"><h4 class="example-title">{part[1]}</h4>')
+                html_content.append(f'<div class="example-section"><h4 class="example-title">{esc(part[1])}</h4>')
                 in_example = True
             elif part[0] == 'input_output':
-                html_content.append(f'<div class="input-output"><strong>{part[1]}</strong> <code class="code-snippet">{part[2]}</code></div>')
+                html_content.append(
+                    f'<div class="input-output"><strong>{esc(part[1])}</strong> '
+                    f'<code class="code-snippet">{esc(part[2])}</code></div>'
+                )
             elif part[0] == 'explanation':
-                html_content.append(f'<div class="explanation"><strong>Explanation:</strong> {part[1]}</div>')
+                html_content.append(
+                    f'<div class="explanation"><strong>Explanation:</strong> {esc(part[1])}</div>'
+                )
             elif part[0] == 'constraints':
                 if in_example:
                     html_content.append('</div>')
                     in_example = False
-                html_content.append(f'<div class="constraints-section"><h4 class="constraints-title">Constraints:</h4>')
+                html_content.append('<div class="constraints-section"><h4 class="constraints-title">Constraints:</h4>')
                 # Разбиваем ограничения по строкам
                 constraints = part[1].split('.')
                 for constraint in constraints:
                     constraint = constraint.strip()
                     if constraint:
-                        html_content.append(f'<div class="constraint-item">{constraint}</div>')
+                        html_content.append(f'<div class="constraint-item">{esc(constraint)}</div>')
                 html_content.append('</div>')
             elif part[0] == 'followup':
                 if in_example:
                     html_content.append('</div>')
                     in_example = False
-                html_content.append(f'<div class="followup-section"><h4 class="followup-title">Follow-up:</h4><p class="followup-text">{part[1]}</p></div>')
+                html_content.append(
+                    f'<div class="followup-section"><h4 class="followup-title">Follow-up:</h4>'
+                    f'<p class="followup-text">{esc(part[1])}</p></div>'
+                )
         
         if in_example:
             html_content.append('</div>')
@@ -177,6 +200,23 @@ def create_app() -> Flask:
     @app.template_filter('clean_html')
     def clean_html_filter(text):
         return clean_html_entities(text)
+
+    @app.template_filter('safe_hint')
+    def safe_hint_filter(text):
+        """Подсказки: только безопасные теги или plain text."""
+        if text is None:
+            return ""
+        raw = str(text)
+        return bleach.clean(
+            raw,
+            tags=["b", "i", "em", "strong", "code", "pre", "br", "p", "ul", "ol", "li"],
+            attributes={},
+            strip=True,
+        )
+
+    @app.context_processor
+    def inject_csrf():
+        return {"csrf_token": generate_csrf}
 
     @app.before_request
     def before_request() -> None:
@@ -408,7 +448,7 @@ def create_app() -> Flask:
             flash("Неверный логин или пароль", "error")
         return render_template("login.html")
 
-    @app.route("/logout")
+    @app.route("/logout", methods=["POST"])
     def logout():
         session.clear()
         return redirect(url_for("login"))
@@ -526,103 +566,132 @@ def create_app() -> Flask:
 
     @app.route("/api/problems")
     def api_problems():
-        """API для получения задач с пагинацией"""
+        """API для получения задач с пагинацией (доступно и гостям)."""
         user_id = session.get("user_id")
-        if not user_id:
-            return jsonify({"error": "unauthorized"}), 401
-        
+
         # Получаем параметры пагинации
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 50))
-        topic = request.args.get('topic', '')
-        difficulty = request.args.get('difficulty', '')
-        
-        # Вычисляем offset
+        try:
+            page = max(1, int(request.args.get("page", 1)))
+            per_page = min(100, max(1, int(request.args.get("per_page", 50))))
+        except (TypeError, ValueError):
+            page, per_page = 1, 50
+        topic = request.args.get("topic", "")
+        difficulty = request.args.get("difficulty", "")
+
         offset = (page - 1) * per_page
-        
-        # Строим SQL запрос
+
         where_clause = "WHERE 1=1"
         base_params = []
-        
+
         if topic:
             where_clause += " AND topic = %s"
             base_params.append(topic)
-        
+
         if difficulty in {"Easy", "Medium", "Hard"}:
             where_clause += " AND difficulty = %s"
             base_params.append(difficulty)
-        
-        sql = """
+
+        if user_id:
+            status_select = """
+                CASE
+                    WHEN EXISTS(
+                        SELECT 1 FROM problem_test_results ptr
+                        WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id
+                          AND ptr.user_id = %s AND ptr.status='passed'
+                    ) THEN 1
+                    WHEN EXISTS(
+                        SELECT 1 FROM problem_test_results ptr
+                        WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id
+                          AND ptr.user_id = %s
+                    ) THEN 0
+                    ELSE NULL
+                END AS last_passed
+            """
+            status_params = [user_id, user_id]
+        else:
+            status_select = "NULL AS last_passed"
+            status_params = []
+
+        sql = f"""
             SELECT problem_id, title, difficulty, topic_tags,
-            COALESCE((
-                SELECT CASE WHEN EXISTS(
-                    SELECT 1 FROM problem_test_results ptr 
-                    WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id 
-                    AND ptr.user_id = %s AND ptr.status='passed'
-                ) THEN 1 ELSE 0 END
-            ), 0) AS last_passed
-            FROM leetcode_problems_with_tests 
-            """ + where_clause + """
+            {status_select}
+            FROM leetcode_problems_with_tests
+            {where_clause}
             ORDER BY problem_id
             LIMIT %s OFFSET %s
         """
-        params = [user_id] + base_params + [per_page, offset]
-        
-        # Получаем задачи
-        problems = execute_query(g.db, sql, params)
-        
-        # Получаем общее количество задач для пагинации
-        count_sql = """
-            SELECT COUNT(*) as total 
-            FROM leetcode_problems_with_tests 
-            """ + where_clause + """
+        params = status_params + base_params + [per_page, offset]
+
+        problems = execute_query(g.db, sql, params) or []
+
+        count_sql = f"""
+            SELECT COUNT(*) as total
+            FROM leetcode_problems_with_tests
+            {where_clause}
         """
-        count_params = base_params
-        total_count = execute_query(g.db, count_sql, count_params)[0]['total']
-        
-        # Форматируем результат
+        total_row = execute_query(g.db, count_sql, base_params)
+        total_count = (total_row[0]["total"] if total_row else 0) or 0
+
         formatted_problems = []
         for p in problems:
+            tags = p.get("topic_tags") or []
+            if isinstance(tags, str):
+                try:
+                    tags = json.loads(tags)
+                except Exception:
+                    tags = []
             formatted_problems.append({
                 "problem_id": p["problem_id"],
                 "title": p["title"],
                 "difficulty": p["difficulty"] or "Easy",
-                "topic_tags": p["topic_tags"] or [],
-                "last_passed": p["last_passed"]
+                "topic_tags": tags if isinstance(tags, list) else [],
+                "last_passed": p["last_passed"],
             })
-        
+
         return jsonify({
             "problems": formatted_problems,
             "pagination": {
                 "page": page,
                 "per_page": per_page,
                 "total": total_count,
-                "total_pages": (total_count + per_page - 1) // per_page,
+                "total_pages": (total_count + per_page - 1) // per_page if total_count else 0,
                 "has_next": page * per_page < total_count,
-                "has_prev": page > 1
-            }
+                "has_prev": page > 1,
+            },
         })
 
     @app.route("/api/topics/<topic>/problems")
     def api_topic_problems(topic: str):
         user_id = session.get("user_id")
-        if not user_id:
-            return jsonify({"error": "unauthorized"}), 401
-        
-        sql = """
-            SELECT problem_id, title, difficulty, topic_tags,
-            COALESCE((
-                SELECT CASE WHEN EXISTS(
-                    SELECT 1 FROM problem_test_results ptr 
-                    WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id 
-                    AND ptr.user_id = %s AND ptr.status='passed'
-                ) THEN 1 ELSE 0 END
-            ), 0) AS last_passed
-            FROM leetcode_problems_with_tests 
-            WHERE topic = %s 
-            ORDER BY difficulty, problem_id
-        """
-        rows = execute_query(g.db, sql, (user_id, topic))
+        if user_id:
+            sql = """
+                SELECT problem_id, title, difficulty, topic_tags,
+                CASE
+                    WHEN EXISTS(
+                        SELECT 1 FROM problem_test_results ptr
+                        WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id
+                          AND ptr.user_id = %s AND ptr.status='passed'
+                    ) THEN 1
+                    WHEN EXISTS(
+                        SELECT 1 FROM problem_test_results ptr
+                        WHERE ptr.problem_id = leetcode_problems_with_tests.problem_id
+                          AND ptr.user_id = %s
+                    ) THEN 0
+                    ELSE NULL
+                END AS last_passed
+                FROM leetcode_problems_with_tests
+                WHERE topic = %s
+                ORDER BY difficulty, problem_id
+            """
+            rows = execute_query(g.db, sql, (user_id, user_id, topic)) or []
+        else:
+            sql = """
+                SELECT problem_id, title, difficulty, topic_tags, NULL AS last_passed
+                FROM leetcode_problems_with_tests
+                WHERE topic = %s
+                ORDER BY difficulty, problem_id
+            """
+            rows = execute_query(g.db, sql, (topic,)) or []
         groups = {"Easy": [], "Medium": [], "Hard": []}
         for r in rows:
             difficulty = r["difficulty"] or "Easy"
@@ -1808,54 +1877,30 @@ def create_app() -> Flask:
         user_id = session.get("user_id")
         if not user_id:
             return redirect(url_for("login"))
-        
+
         results = None
-        
+        language = "python3"
+
         if request.method == "POST":
             code = request.form.get("code", "")
-            language = request.form.get("language", "python3")
-            
-            # Отладочная информация
-            print(f"DEBUG: code = '{code[:100]}...'")
-            print(f"DEBUG: language = '{language}'")
-            
             if code.strip():
                 try:
-                    # Выполняем код в зависимости от языка
-                    if language == "python3":
-                        result = _run_with_timeout(code, 5.0)
-                    elif language == "javascript":
-                        # Для JavaScript используем Node.js
-                        result = _run_javascript_with_timeout(code, 5.0)
-                    elif language in ["java", "c", "csharp", "cpp"]:
-                        # Для компилируемых языков используем соответствующие компиляторы
-                        result = _run_compiled_with_timeout(code, language, 5.0)
-                    else:
-                        result = {"ok": False, "error": "Неподдерживаемый язык программирования"}
-                    
-                    # Отладочная информация
-                    print(f"DEBUG: Language: {language}")
-                    print(f"DEBUG: Code: {code[:100]}...")
-                    print(f"DEBUG: Result: {result}")
-                    
+                    result = _run_with_timeout(code, 5.0)
                     results = {
                         "success": result.get("ok", False),
                         "output": result.get("output", ""),
                         "error": result.get("error", ""),
-                        "execution_time": result.get("execution_time", 0)
+                        "execution_time": result.get("execution_time", 0),
                     }
                 except Exception as e:
-                    print(f"DEBUG: Exception: {str(e)}")
                     results = {
                         "success": False,
                         "output": "",
                         "error": f"Ошибка выполнения: {str(e)}",
-                        "execution_time": 0
+                        "execution_time": 0,
                     }
-        
-        # Передаем выбранный язык в шаблон
-        selected_language = request.form.get("language", "javascript") if request.method == "POST" else "javascript"
-        return render_template("sandbox.html", results=results, selected_language=selected_language)
+
+        return render_template("sandbox.html", results=results, selected_language=language)
 
     return app
 

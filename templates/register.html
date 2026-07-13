@@ -8,6 +8,7 @@
     </div>
     
     <form method="post" class="form" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <label>
         Логин
         <input

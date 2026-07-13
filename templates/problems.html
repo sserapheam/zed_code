@@ -222,7 +222,10 @@ async function loadMoreProblems() {
     
     try {
         currentPage++;
-        const response = await fetch(`/api/problems?page=${currentPage}&per_page=50&topic=${currentTopic}&difficulty=${currentDifficulty}`);
+        const response = await fetch(`/api/problems?page=${currentPage}&per_page=50&topic=${encodeURIComponent(currentTopic || '')}&difficulty=${encodeURIComponent(currentDifficulty || '')}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         const data = await response.json();
         
         if (data.problems && data.problems.length > 0) {
@@ -254,52 +257,88 @@ async function loadMoreProblems() {
     }
 }
 
-// Создание элемента задачи
+// Создание элемента задачи (без innerHTML injection)
+function escapeHtml(text) {
+    return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function createProblemElement(problem) {
     const div = document.createElement('div');
-    div.className = `problem-item ${problem.last_passed ? 'solved-problem' : ''}`;
-    
     const isSolved = problem.last_passed !== null && problem.last_passed === 1;
     const hasAttempt = problem.last_passed !== null && problem.last_passed === 0;
-    
-    const statusHtml = isSolved
-        ? `<span class="status solved">✓ Решено</span>`
-        : (hasAttempt 
-            ? `<span class="status attempted">✗ Попытка</span>`
-            : '');
-    
-    const tagsHtml = problem.topic_tags && problem.topic_tags.length > 0
-        ? `<div class="problem-tags">
-             ${problem.topic_tags.slice(0, 2).map(tag => `<span class="tag">${tag}</span>`).join('')}
-           </div>`
-        : '';
-    
-    const solvedIcon = isSolved
-        ? '<span class="solved-icon" style="color: #28a745; margin-right: 0.5rem; font-size: 1.1em;">✓</span>'
-        : '';
-    
     div.className = `problem-item ${isSolved ? 'solved-problem' : ''}`;
-    
-    div.innerHTML = `
-        <div class="problem-content">
-            <div class="problem-title">
-                <a href="/problem/${problem.problem_id}" class="title-link">
-                    ${solvedIcon}${problem.problem_id}. ${problem.title}
-                </a>
-            </div>
-            <div class="problem-meta">
-                <span class="difficulty ${problem.difficulty}">${problem.difficulty}</span>
-                ${tagsHtml}
-                ${statusHtml}
-            </div>
-        </div>
-        <div class="problem-actions">
-            <a href="/problem/${problem.problem_id}" class="btn-solve">
-                ${isSolved ? 'Повторить' : 'Решить'}
-            </a>
-        </div>
-    `;
-    
+
+    const content = document.createElement('div');
+    content.className = 'problem-content';
+
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'problem-title';
+    const link = document.createElement('a');
+    link.href = `/problem/${encodeURIComponent(problem.problem_id)}`;
+    link.className = 'title-link';
+    if (isSolved) {
+        const icon = document.createElement('span');
+        icon.className = 'solved-icon';
+        icon.textContent = '✓';
+        icon.style.color = '#28a745';
+        icon.style.marginRight = '0.5rem';
+        icon.style.fontSize = '1.1em';
+        link.appendChild(icon);
+    }
+    link.appendChild(document.createTextNode(`${problem.problem_id}. ${problem.title || ''}`));
+    titleWrap.appendChild(link);
+
+    const meta = document.createElement('div');
+    meta.className = 'problem-meta';
+    const allowedDiff = ['Easy', 'Medium', 'Hard'];
+    const difficultyValue = allowedDiff.includes(problem.difficulty) ? problem.difficulty : 'Easy';
+    const diff = document.createElement('span');
+    diff.className = `difficulty ${difficultyValue}`;
+    diff.textContent = difficultyValue;
+    meta.appendChild(diff);
+
+    if (problem.topic_tags && problem.topic_tags.length > 0) {
+        const tags = document.createElement('div');
+        tags.className = 'problem-tags';
+        problem.topic_tags.slice(0, 2).forEach((tag) => {
+            const span = document.createElement('span');
+            span.className = 'tag';
+            span.textContent = String(tag);
+            tags.appendChild(span);
+        });
+        meta.appendChild(tags);
+    }
+
+    if (isSolved) {
+        const status = document.createElement('span');
+        status.className = 'status solved';
+        status.textContent = '✓ Решено';
+        meta.appendChild(status);
+    } else if (hasAttempt) {
+        const status = document.createElement('span');
+        status.className = 'status attempted';
+        status.textContent = '✗ Попытка';
+        meta.appendChild(status);
+    }
+
+    content.appendChild(titleWrap);
+    content.appendChild(meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'problem-actions';
+    const solve = document.createElement('a');
+    solve.href = `/problem/${encodeURIComponent(problem.problem_id)}`;
+    solve.className = 'btn-solve';
+    solve.textContent = isSolved ? 'Повторить' : 'Решить';
+    actions.appendChild(solve);
+
+    div.appendChild(content);
+    div.appendChild(actions);
     return div;
 }
 

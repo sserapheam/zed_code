@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Песочница - Учебный тренажёр{% endblock %}
+{% block title %}Песочница — zedcode{% endblock %}
 
 {% block content %}
 <div class="container">
@@ -8,75 +8,36 @@
     <div class="panel">
       <div class="sandbox-header">
         <h1>Песочница</h1>
-        <div class="sandbox-controls">
-          <div class="language-selector">
-            <label for="language-select">Язык:</label>
-            <select id="language-select" onchange="switchLanguage()">
-              <option value="python3" {% if selected_language == 'python3' %}selected{% endif %}>Python 3</option>
-              <option value="javascript" {% if selected_language == 'javascript' %}selected{% endif %}>JavaScript</option>
-              <option value="java" {% if selected_language == 'java' %}selected{% endif %}>Java</option>
-              <option value="c" {% if selected_language == 'c' %}selected{% endif %}>C</option>
-              <option value="csharp" {% if selected_language == 'csharp' %}selected{% endif %}>C#</option>
-              <option value="cpp" {% if selected_language == 'cpp' %}selected{% endif %}>C++</option>
-            </select>
-          </div>
-        </div>
+        <p class="muted">Быстрый прогон Python 3-кода вне задач</p>
       </div>
 
       <form method="post" class="sandbox-form">
-        <input type="hidden" name="language" id="selected-language" value="{{ selected_language or 'javascript' }}" />
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="language" value="python3" />
         
-        <!-- Единый редактор кода -->
         <div class="editor-section">
           <div class="editor-header">
-            <span class="editor-icon">💻</span>
-            <span class="editor-label">Редактор кода</span>
+            <span class="editor-label">Python 3</span>
           </div>
           <div class="code-editor-container">
-            <textarea id="code-editor" name="code" placeholder="Введите код...">{% if selected_language == 'python3' %}# Пример кода на Python
+            <textarea id="code-editor" name="code" placeholder="Введите код..."># Пример кода на Python
 def hello_world():
     print("Привет, мир!")
     return "Hello, World!"
 
-# Вызов функции
 result = hello_world()
 print(f"Результат: {result}")
 
-# Простые вычисления
 numbers = [1, 2, 3, 4, 5]
-sum_numbers = sum(numbers)
-print(f"Сумма чисел {numbers}: {sum_numbers}"){% else %}// Пример кода на JavaScript
-function helloWorld() {
-    console.log("Привет, мир!");
-    return "Hello, World!";
-}
-
-// Вызов функции
-const result = helloWorld();
-console.log(`Результат: ${result}`);
-
-// Простые вычисления
-const numbers = [1, 2, 3, 4, 5];
-const sumNumbers = numbers.reduce((a, b) => a + b, 0);
-console.log(`Сумма чисел ${numbers}: ${sumNumbers}`);{% endif %}</textarea>
+print(f"Сумма чисел {numbers}: {sum(numbers)}")</textarea>
           </div>
         </div>
 
-
         <div class="form-actions">
           <div class="action-buttons">
-            <button type="button" class="btn secondary" onclick="clearCode()">
-              <span class="btn-icon">🗑️</span>
-              Очистить
-            </button>
-            <button type="button" class="btn secondary" onclick="resetCode()">
-              <span class="btn-icon">🔄</span>
-              Сбросить
-            </button>
-            <button type="submit" class="btn primary">
-              <span class="btn-icon">▶️</span>
-              Выполнить код
-            </button>
+            <button type="button" class="btn secondary" onclick="clearCode()">Очистить</button>
+            <button type="button" class="btn secondary" onclick="resetCode()">Сбросить</button>
+            <button type="submit" class="btn primary">Выполнить код</button>
           </div>
         </div>
       </form>
@@ -84,15 +45,9 @@ console.log(`Сумма чисел ${numbers}: ${sumNumbers}`);{% endif %}</text
       {% if results %}
         <div class="execution-results">
           <div class="results-header">
-            <h3>
-              <span class="results-icon">{{ '✅' if results.get('success') else '❌' }}</span>
-              Результат выполнения
-            </h3>
+            <h3>Результат выполнения</h3>
             <div class="execution-info">
-              <span class="execution-time">
-                <span class="time-icon">⏱️</span>
-                {{ results.get('execution_time', 0) }}мс
-              </span>
+              <span class="execution-time">{{ results.get('execution_time', 0) }} мс</span>
               <span class="execution-status {{ 'success' if results.get('success') else 'error' }}">
                 {{ 'Успешно' if results.get('success') else 'Ошибка' }}
               </span>
@@ -101,10 +56,7 @@ console.log(`Сумма чисел ${numbers}: ${sumNumbers}`);{% endif %}</text
           
           {% if results.get('output') %}
             <div class="output-section">
-              <div class="output-header">
-                <span class="output-icon">📤</span>
-                <span class="output-label">Вывод программы</span>
-              </div>
+              <div class="output-header">Вывод программы</div>
               <div class="output-content">
                 <pre class="output-text">{{ results.get('output', '') }}</pre>
               </div>
@@ -113,12 +65,9 @@ console.log(`Сумма чисел ${numbers}: ${sumNumbers}`);{% endif %}</text
           
           {% if results.get('error') %}
             <div class="error-section">
-              <div class="error-header">
-                <span class="error-icon">⚠️</span>
-                <span class="error-label">Ошибка выполнения</span>
-              </div>
+              <div class="error-header">Ошибка выполнения</div>
               <div class="error-content">
-                <pre class="error-text">{{ results.get('error') }}</pre>
+                <pre class="error-text">{{ results.get('error', '') }}</pre>
               </div>
             </div>
           {% endif %}
@@ -128,236 +77,40 @@ console.log(`Сумма чисел ${numbers}: ${sumNumbers}`);{% endif %}</text
   </div>
 </div>
 
-<!-- Подключение CodeMirror -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/solarized.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/github.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/clike/clike.min.js"></script>
-
 <script>
-  // Глобальные переменные
-  let codeEditor = null;
-  let currentLanguage = '{{ selected_language or "javascript" }}';
-  
-  // Стартовые коды для каждого языка
-  const starterCodes = {
-    'python3': `# Пример кода на Python
-def hello_world():
-    print("Привет, мир!")
-    return "Hello, World!"
+  const STARTER = document.getElementById('code-editor').value;
+  let editor = null;
 
-# Вызов функции
-result = hello_world()
-print(f"Результат: {result}")`,
-    'javascript': `// Пример кода на JavaScript
-function helloWorld() {
-    console.log("Привет, мир!");
-    return "Hello, World!";
-}
+  function clearCode() {
+    if (editor) editor.setValue('');
+    else document.getElementById('code-editor').value = '';
+  }
 
-// Вызов функции
-const result = helloWorld();
-console.log(\`Результат: \${result}\`);`,
-    'java': `// Пример кода на Java
-public class Main {
-    public static void main(String[] args) {
-        System.out.println("Привет, мир!");
-        String result = helloWorld();
-        System.out.println("Результат: " + result);
-    }
-    
-    public static String helloWorld() {
-        return "Hello, World!";
-    }
-}`,
-    'c': `// Пример кода на C
-#include <stdio.h>
+  function resetCode() {
+    if (editor) editor.setValue(STARTER);
+    else document.getElementById('code-editor').value = STARTER;
+  }
 
-char* helloWorld() {
-    return "Hello, World!";
-}
-
-int main() {
-    printf("Привет, мир!\\n");
-    char* result = helloWorld();
-    printf("Результат: %s\\n", result);
-    return 0;
-}`,
-    'csharp': `// Пример кода на C#
-using System;
-
-class Program {
-    static void Main() {
-        Console.WriteLine("Привет, мир!");
-        string result = HelloWorld();
-        Console.WriteLine($"Результат: {result}");
-    }
-    
-    static string HelloWorld() {
-        return "Hello, World!";
-    }
-}`,
-    'cpp': `// Пример кода на C++
-#include <iostream>
-#include <string>
-
-std::string helloWorld() {
-    return "Hello, World!";
-}
-
-int main() {
-    std::cout << "Привет, мир!" << std::endl;
-    std::string result = helloWorld();
-    std::cout << "Результат: " << result << std::endl;
-    return 0;
-}`
-  };
-
-  // Инициализация CodeMirror
-  function initCodeMirror() {
-    const textarea = document.getElementById('code-editor');
-    if (!textarea) return;
-    
-    // Определяем тему на основе темы сайта
+  document.addEventListener('DOMContentLoaded', function() {
+    const ta = document.getElementById('code-editor');
+    if (!ta || typeof CodeMirror === 'undefined') return;
     const siteTheme = localStorage.getItem('theme') || 'light';
-    const editorTheme = siteTheme === 'dark' ? 'monokai' : 'default';
-    
-    // Определяем режим для выбранного языка
-    let mode = 'javascript';
-    if (currentLanguage === 'python3') mode = 'python';
-    else if (currentLanguage === 'java' || currentLanguage === 'c' || currentLanguage === 'csharp' || currentLanguage === 'cpp') mode = 'text/x-java';
-    
-    codeEditor = CodeMirror.fromTextArea(textarea, {
-      mode: mode,
-      theme: editorTheme,
+    editor = CodeMirror.fromTextArea(ta, {
+      mode: 'python',
+      theme: siteTheme === 'dark' ? 'monokai' : 'default',
       lineNumbers: true,
       indentUnit: 4,
-      tabSize: 4,
-      indentWithTabs: false,
-      lineWrapping: true,
-      autoCloseBrackets: true,
-      matchBrackets: true,
-      foldGutter: true,
-      gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
-      direction: "ltr",
-      textWrapping: true,
-      scrollbarStyle: "native",
-      extraKeys: {
-        "Tab": function(cm) {
-          if (cm.somethingSelected()) {
-            cm.indentSelection("add");
-          } else {
-            cm.replaceSelection("    ");
-          }
-        },
-        "Shift-Tab": function(cm) {
-          cm.indentSelection("subtract");
-        }
-      }
+      lineWrapping: true
     });
-    
-    // Устанавливаем начальный код
-    codeEditor.setValue(starterCodes[currentLanguage]);
-    
-    // Принудительно обновляем редактор
-    setTimeout(() => {
-      codeEditor.refresh();
-      codeEditor.setCursor(0, 0);
-    }, 10);
-  }
-
-  // Переключение языка
-  function switchLanguage() {
-    const selectedLang = document.getElementById('language-select').value;
-    const selectedLanguageInput = document.getElementById('selected-language');
-    
-    // Сохраняем текущий код
-    if (codeEditor) {
-      const currentCode = codeEditor.getValue();
-      // Сохраняем код для текущего языка
-      localStorage.setItem('code_' + currentLanguage, currentCode);
-    }
-    
-    // Обновляем текущий язык
-    currentLanguage = selectedLang;
-    selectedLanguageInput.value = selectedLang;
-    
-    // Устанавливаем режим для нового языка
-    let mode = 'python';
-    if (selectedLang === 'javascript') mode = 'javascript';
-    else if (selectedLang === 'java' || selectedLang === 'c' || selectedLang === 'csharp' || selectedLang === 'cpp') mode = 'text/x-java';
-    
-    if (codeEditor) {
-      // Сначала обновляем режим
-      codeEditor.setOption('mode', mode);
-      
-      // Загружаем сохраненный код или стартовый код
-      const savedCode = localStorage.getItem('code_' + selectedLang);
-      if (savedCode) {
-        codeEditor.setValue(savedCode);
-      } else {
-        codeEditor.setValue(starterCodes[selectedLang]);
-      }
-      
-      // Принудительно обновляем редактор и сбрасываем позицию
-      setTimeout(() => {
-        codeEditor.refresh();
-        codeEditor.setCursor(0, 0); // Сбрасываем курсор в начало
-        codeEditor.clearHistory(); // Очищаем историю изменений
-      }, 10);
-    }
-  }
-
-  // Очистка кода
-  function clearCode() {
-    if (codeEditor) {
-      codeEditor.setValue('');
-      codeEditor.focus();
-    }
-  }
-
-  // Сброс кода
-  function resetCode() {
-    if (codeEditor) {
-      codeEditor.setValue(starterCodes[currentLanguage]);
-      codeEditor.focus();
-    }
-  }
-
-  // Обновление темы редактора
-  function updateEditorTheme() {
-    if (codeEditor) {
-      const siteTheme = localStorage.getItem('theme') || 'light';
-      const editorTheme = siteTheme === 'dark' ? 'monokai' : 'default';
-      codeEditor.setOption('theme', editorTheme);
-    }
-  }
-
-  // Инициализация при загрузке страницы
-  document.addEventListener('DOMContentLoaded', function() {
-    initCodeMirror();
-    
-    // Загружаем сохраненный код для текущего языка
-    if (codeEditor) {
-      const savedCode = localStorage.getItem('code_' + currentLanguage);
-      if (savedCode) {
-        codeEditor.setValue(savedCode);
-      }
-    }
-  });
-
-
-  // Сохранение кода перед отправкой формы
-  document.querySelector('.sandbox-form').addEventListener('submit', function() {
-    if (codeEditor) {
-      const textarea = codeEditor.getTextArea();
-      textarea.value = codeEditor.getValue();
-      // Сохраняем код в localStorage
-      localStorage.setItem('code_' + currentLanguage, codeEditor.getValue());
+    const form = ta.closest('form');
+    if (form) {
+      form.addEventListener('submit', function() {
+        if (editor) editor.save();
+      });
     }
   });
 </script>

@@ -78,7 +78,7 @@
                         <span class="hint-icon" style="transition: transform 0.3s ease; font-size: 0.8em;">▼</span>
                       </button>
                       <div class="hint-content" style="display: none; padding: 0 0.75rem 0.75rem 0.75rem; color: var(--text); line-height: 1.6; border-top: 1px solid var(--border);">
-                        <div style="padding-top: 0.75rem;">{{ hint_str|safe }}</div>
+                        <div style="padding-top: 0.75rem;">{{ hint_str|safe_hint|safe }}</div>
                       </div>
                     </div>
                   {% endif %}
@@ -97,6 +97,7 @@
           {% if session.get('user_id') %}
             <!-- Форма добавления комментария -->
             <form method="POST" action="{{ url_for('add_comment') }}" class="comment-form" style="margin-bottom: 2rem;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
               <input type="hidden" name="problem_id" value="{{ problem['problem_id'] }}">
               <textarea 
                 name="content" 
@@ -147,6 +148,7 @@
                               Редактировать
                             </button>
                             <form method="POST" action="{{ url_for('delete_comment', comment_id=comment['id']) }}" style="display: inline;">
+                              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                               <button type="submit" onclick="return confirm('Вы уверены, что хотите удалить этот комментарий?');" 
                                       style="background: none; border: none; color: var(--danger); cursor: pointer; font-size: 0.85em; padding: 0;">
                                 Удалить
@@ -167,6 +169,7 @@
                       <!-- Реакции -->
                       <div class="comment-reactions" style="display: flex; align-items: center; gap: 0.5rem;">
                         <form method="POST" action="{{ url_for('toggle_reaction', comment_id=comment['id']) }}" class="reaction-form" style="display: inline;">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                           <input type="hidden" name="reaction_type" value="like">
                           <button type="submit" class="reaction-btn like-btn {% if comment.get('user_reaction') == 'like' %}active{% endif %}" 
                                   style="background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.35rem 0.6rem; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; font-size: 0.85em; color: var(--text-muted); transition: all 0.2s ease;">
@@ -175,6 +178,7 @@
                           </button>
                         </form>
                         <form method="POST" action="{{ url_for('toggle_reaction', comment_id=comment['id']) }}" class="reaction-form" style="display: inline;">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                           <input type="hidden" name="reaction_type" value="dislike">
                           <button type="submit" class="reaction-btn dislike-btn {% if comment.get('user_reaction') == 'dislike' %}active{% endif %}" 
                                   style="background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.35rem 0.6rem; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; font-size: 0.85em; color: var(--text-muted); transition: all 0.2s ease;">
@@ -206,6 +210,7 @@
         </div>
     
     <form method="post" class="form" id="solution-form" onsubmit="return false;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <input type="hidden" name="duration_ms" id="duration_ms" />
       <input type="hidden" name="language" value="python3" />
       
@@ -458,10 +463,9 @@
       try {
         const resp = await fetch(`/api/problem/${PROBLEM_ID}/${mode}`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-          },
+          headers: getCsrfHeaders({
+            'Content-Type': 'application/json'
+          }),
           body: JSON.stringify({ code, duration_ms: durationMs })
         });
         const data = await resp.json();
@@ -608,9 +612,7 @@
         fetch(this.action, {
           method: 'POST',
           body: formData,
-          headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-          }
+          headers: getCsrfHeaders()
         })
         .then(response => response.json())
         .then(data => {
@@ -691,6 +693,7 @@
         // Отправляем запрос на сервер
         const formData = new FormData();
         formData.append('content', content);
+        formData.append('csrf_token', getCsrfToken());
         
         saveBtn.disabled = true;
         saveBtn.textContent = 'Сохранение...';
@@ -698,9 +701,7 @@
         fetch(`/comment/${commentId}/edit`, {
           method: 'POST',
           body: formData,
-          headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-          }
+          headers: getCsrfHeaders()
         })
         .then(response => response.json())
         .then(data => {
