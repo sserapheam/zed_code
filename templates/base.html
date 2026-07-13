@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=home-fullbleed-1" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=highprio-1" />
     
     <!-- Предотвращение моргания темы сайта -->
     <script>
@@ -35,24 +35,37 @@
           </svg>
         </a>
         <a href="{{ url_for('problems') }}" class="brand">zedcode</a>
-        <div class="spacer"></div>
-        <a class="btn secondary" href="{{ url_for('problems') }}">Задачи</a>
-        <form class="search" method="get" action="{{ url_for('search') }}">
-          <input type="text" name="q" placeholder="Поиск задач..." value="{{ request.args.get('q','') }}" />
-        </form>
-        <button class="btn secondary theme-toggle" onclick="toggleTheme()" title="Переключить тему">
-          <span id="theme-icon">🌙</span>
+
+        <button type="button" class="btn secondary nav-burger" id="nav-burger" aria-label="Меню" aria-expanded="false" onclick="toggleNavMenu()">
+          ☰
         </button>
-        {% if session.get('user_id') %}
-          <a class="btn secondary" href="{{ url_for('sandbox') }}">Песочница</a>
-          <a class="btn secondary" href="{{ url_for('leaderboard') }}">Лидерборд</a>
-          <a class="btn secondary" href="{{ url_for('submissions') }}">Отправки</a>
-          <a class="btn secondary" href="{{ url_for('profile') }}">Профиль ({{ session.get('username') }})</a>
-          <a class="btn" href="{{ url_for('logout') }}">Выход</a>
-        {% else %}
-          <a class="btn" href="{{ url_for('login') }}">Вход</a>
-          <a class="btn secondary" href="{{ url_for('register') }}">Регистрация</a>
-        {% endif %}
+
+        <div class="nav-menu" id="nav-menu">
+          <a class="btn secondary" href="{{ url_for('problems') }}">Задачи</a>
+          <form class="search" method="get" action="{{ url_for('search') }}">
+            <input type="text" name="q" placeholder="Поиск задач..." value="{{ request.args.get('q','') }}" />
+          </form>
+          <button type="button" class="btn secondary theme-toggle" onclick="toggleTheme()" title="Переключить тему">
+            <span id="theme-icon">🌙</span>
+          </button>
+          {% if session.get('user_id') %}
+            <div class="nav-dropdown">
+              <button type="button" class="btn secondary nav-dropdown-toggle" onclick="toggleAccountMenu(event)">
+                {{ session.get('username') }} ▾
+              </button>
+              <div class="nav-dropdown-menu" id="account-menu">
+                <a href="{{ url_for('sandbox') }}">Песочница</a>
+                <a href="{{ url_for('leaderboard') }}">Лидерборд</a>
+                <a href="{{ url_for('submissions') }}">Отправки</a>
+                <a href="{{ url_for('profile') }}">Профиль</a>
+                <a href="{{ url_for('logout') }}" class="nav-logout">Выход</a>
+              </div>
+            </div>
+          {% else %}
+            <a class="btn" href="{{ url_for('login') }}">Вход</a>
+            <a class="btn secondary" href="{{ url_for('register') }}">Регистрация</a>
+          {% endif %}
+        </div>
       </div>
     </nav>
 
@@ -108,6 +121,26 @@
           header.parentElement.classList.add('expanded');
         }
       }
+
+      function toggleNavMenu() {
+        const menu = document.getElementById('nav-menu');
+        const burger = document.getElementById('nav-burger');
+        if (!menu || !burger) return;
+        const open = menu.classList.toggle('is-open');
+        burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      }
+
+      function toggleAccountMenu(event) {
+        event.stopPropagation();
+        const menu = document.getElementById('account-menu');
+        if (!menu) return;
+        menu.classList.toggle('is-open');
+      }
+
+      document.addEventListener('click', function() {
+        const menu = document.getElementById('account-menu');
+        if (menu) menu.classList.remove('is-open');
+      });
       
       // Глобальная функция переключения темы
       function toggleTheme() {

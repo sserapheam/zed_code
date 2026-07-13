@@ -19,24 +19,24 @@
           <div class="description-text">{{ problem['description']|clean_html|safe }}</div>
           
           {% if problem['examples'] %}
-            <div class="examples-section" style="margin-top: 1.5rem;">
-              <h4 style="margin-bottom: 0.75rem; font-size: 1rem;">Примеры:</h4>
+            <div class="examples-section">
+              <h4>Примеры:</h4>
               {% for example in problem['examples'] %}
-                <div class="example-item" style="margin-bottom: 0.75rem; padding: 0.75rem; background: #f8f9fa; border-left: 3px solid #3b82f6; border-radius: 4px;">
+                <div class="example-item">
                   {% if example.get('input') %}
-                    <div class="example-row" style="margin-bottom: 0.4rem; display: flex; align-items: flex-start; gap: 0.5rem;">
-                      <strong class="example-label" style="min-width: 100px; font-size: 0.85em; color: #64748b;">Вход:</strong>
-                      <code class="example-code" style="flex: 1; padding: 0.35rem 0.6rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 0.9em; display: inline-block;">{{ example['input'] }}</code>
+                    <div class="example-row">
+                      <strong class="example-label">Вход:</strong>
+                      <code class="example-code">{{ example['input'] }}</code>
                     </div>
                   {% endif %}
                   {% if example.get('output') %}
-                    <div class="example-row" style="margin-bottom: 0.4rem; display: flex; align-items: flex-start; gap: 0.5rem;">
-                      <strong class="example-label" style="min-width: 100px; font-size: 0.85em; color: #64748b;">Выход:</strong>
-                      <code class="example-code" style="flex: 1; padding: 0.35rem 0.6rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 0.9em; display: inline-block;">{{ example['output'] }}</code>
+                    <div class="example-row">
+                      <strong class="example-label">Выход:</strong>
+                      <code class="example-code">{{ example['output'] }}</code>
                     </div>
                   {% endif %}
                   {% if example.get('explanation') %}
-                    <div class="example-explanation" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e2e8f0; font-size: 0.85em; color: #64748b; font-style: italic; line-height: 1.4;">
+                    <div class="example-explanation">
                       <strong>Объяснение:</strong> {{ example['explanation'] }}
                     </div>
                   {% endif %}
@@ -46,14 +46,14 @@
           {% endif %}
           
           {% if problem['constraints'] %}
-            <div class="constraints-section" style="margin-top: 1.5rem;">
-              <h4 style="margin-bottom: 0.75rem; font-size: 1rem;">Ограничения:</h4>
-              <div class="constraints-text" style="white-space: pre-line; padding: 0.75rem; background: #f8f9fa; border-left: 3px solid #f59e0b; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6; color: #475569;">{{ problem['constraints'] }}</div>
+            <div class="constraints-section">
+              <h4>Ограничения:</h4>
+              <div class="constraints-text">{{ problem['constraints'] }}</div>
             </div>
           {% endif %}
           
           {% if tags %}
-            <div class="tags-section" style="margin-top: 1.5rem;">
+            <div class="tags-section">
               <h4>Теги:</h4>
               <div class="tags-list">
                 {% for tag in tags %}
@@ -205,7 +205,7 @@
           <h2>Ваше решение</h2>
         </div>
     
-    <form method="post" class="form">
+    <form method="post" class="form" id="solution-form" onsubmit="return false;">
       <input type="hidden" name="duration_ms" id="duration_ms" />
       <input type="hidden" name="language" value="python3" />
       
@@ -219,185 +219,24 @@
           </label>
         </div>
       
-      <div class="actions">
-        <button type="submit" class="btn">Отправить решение</button>
+      <div class="actions judge-actions">
+        <button type="button" class="btn secondary" id="btn-run" onclick="runSolution()">Запустить</button>
+        <button type="button" class="btn" id="btn-submit" onclick="submitSolution()">Отправить</button>
         <button type="button" class="btn secondary" onclick="clearCode()">Очистить</button>
-        <button type="button" class="btn secondary" onclick="resetToStarter()">Сбросить к стартовому коду</button>
+        <button type="button" class="btn secondary" onclick="resetToStarter()">Сбросить</button>
         </div>
       </form>
-      
-      {% if results %}
-        <div class="results-section">
-          <h3>Результаты проверки</h3>
-          <div class="results-list">
-            {% if results.get('passed') %}
-              <!-- Все тесты пройдены - красивое отображение -->
-              <div class="success-result" style="padding: 1.25rem; background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border: 2px solid #28a745; border-radius: 10px; color: #155724; position: relative; overflow: hidden; animation: slideInSuccess 0.5s ease-out;">
-                <div style="display: flex; align-items: center; gap: 1rem;">
-                  <div style="font-size: 2.2em; animation: checkmarkPop 0.6s ease-out 0.2s both; flex-shrink: 0;">✓</div>
-                  <div style="flex: 1;">
-                    <div style="font-size: 1.1em; font-weight: bold; margin-bottom: 0.3rem;">Поздравляем! Все тесты пройдены</div>
-                    {% if results.get('total_tests') %}
-                      <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 0.3rem;">
-                        Успешно пройдено {{ results.get('passed_tests', 0) }} из {{ results.get('total_tests', 0) }} тестов
-                      </div>
-                    {% endif %}
-                    {% if results.get('points_awarded') and results.get('points_awarded') > 0 %}
-                      <div style="margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: rgba(40, 167, 69, 0.2); border-radius: 6px; display: inline-block; font-weight: 600; font-size: 0.95em;">
-                        🎉 Начислено <strong style="color: #155724;">+{{ results.get('points_awarded') }} очков</strong>
-                      </div>
-                    {% endif %}
-                  </div>
-                </div>
-                <div style="position: absolute; top: -50%; right: -50%; width: 200%; height: 200%; background: radial-gradient(circle, rgba(40, 167, 69, 0.1) 0%, transparent 70%); animation: pulse 2s ease-in-out infinite; pointer-events: none;"></div>
-              </div>
-              
-              {% if stats_for_chart %}
-                <!-- Графики сравнения производительности -->
-                <div class="performance-charts" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
-                  <!-- График времени выполнения -->
-                  <div class="performance-chart" style="padding: 1.25rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                      <div>
-                        <div style="font-size: 0.85em; color: #64748b; margin-bottom: 0.25rem;">Время выполнения</div>
-                        <div style="font-size: 1.5em; font-weight: 600; color: #1e293b;">
-                          {{ (results.get('execution_time', 0) * 1000)|round|int }} ms
-                        </div>
-                      </div>
-                      {% if stats_for_chart.time_percentile is defined and stats_for_chart.others_count > 0 %}
-                        <div style="font-size: 0.9em; color: #10b981; font-weight: 600;">
-                          Быстрее чем {{ stats_for_chart.time_percentile }}%
-                        </div>
-                      {% endif %}
-                    </div>
-                    <div style="position: relative; height: 200px;">
-                      <canvas id="timeChart"></canvas>
-                    </div>
-                  </div>
-                  
-                  <!-- График использования памяти -->
-                  <div class="performance-chart" style="padding: 1.25rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                      <div>
-                        <div style="font-size: 0.85em; color: #64748b; margin-bottom: 0.25rem;">Использование памяти</div>
-                        <div style="font-size: 1.5em; font-weight: 600; color: #1e293b;">
-                          {{ "%.1f"|format(results.get('memory_used', 0)) }} MB
-                        </div>
-                      </div>
-                      {% if stats_for_chart.memory_percentile is defined and stats_for_chart.others_count > 0 %}
-                        <div style="font-size: 0.9em; color: #10b981; font-weight: 600;">
-                          Меньше чем {{ stats_for_chart.memory_percentile }}%
-                        </div>
-                      {% endif %}
-                    </div>
-                    <div style="position: relative; height: 200px;">
-                      <canvas id="memoryChart"></canvas>
-                    </div>
-                  </div>
-                </div>
-              {% endif %}
-              
-              <style>
-                @keyframes slideInSuccess {
-                  from {
-                    opacity: 0;
-                    transform: translateY(-10px);
-                  }
-                  to {
-                    opacity: 1;
-                    transform: translateY(0);
-                  }
-                }
-                
-                @keyframes checkmarkPop {
-                  0% {
-                    transform: scale(0);
-                    opacity: 0;
-                  }
-                  50% {
-                    transform: scale(1.2);
-                  }
-                  100% {
-                    transform: scale(1);
-                    opacity: 1;
-                  }
-                }
-                
-                @keyframes pulse {
-                  0%, 100% {
-                    opacity: 0.3;
-                  }
-                  50% {
-                    opacity: 0.1;
-                  }
-                }
-              </style>
-            {% else %}
-              <!-- Показываем только первый непройденный тест -->
-              {% set failed_test = results['results']|selectattr('status', 'ne', 'OK')|first %}
-              {% if failed_test %}
-                <div class="result-item" style="padding: 1rem; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 8px; color: #721c24;">
-                  <div style="margin-bottom: 0.5rem;">
-                    <span class="result-test" style="font-weight: bold;">Тест {{ failed_test['case'] }}:</span>
-                    {% if failed_test['status'] == 'WA' %}
-                      <span class="bad" style="color: #721c24;">✗ Неверный ответ</span>
-                    {% elif failed_test['status'] == 'TIMEOUT' %}
-                      <span class="bad" style="color: #721c24;">⏱ Превышено время выполнения</span>
-                    {% else %}
-                      <span class="bad" style="color: #721c24;">💥 Ошибка выполнения</span>
-                    {% endif %}
-                  </div>
-                  
-                  {% if failed_test.get('input') %}
-                    <div style="margin-top: 0.5rem; font-size: 0.9em;">
-                      <strong>Входные данные:</strong>
-                      <code class="test-output-code" style="display: block; margin-top: 0.25rem; padding: 0.5rem; background: #fff; border-radius: 4px; font-family: monospace;">{{ failed_test['input'] }}</code>
-                    </div>
-                  {% endif %}
-                  
-                  {% if failed_test.get('expected') is not none %}
-                    <div style="margin-top: 0.5rem; font-size: 0.9em;">
-                      <strong>Ожидалось:</strong>
-                      <code class="test-output-code" style="display: block; margin-top: 0.25rem; padding: 0.5rem; background: #fff; border-radius: 4px; font-family: monospace;">{{ failed_test['expected'] }}</code>
-                    </div>
-                  {% endif %}
-                  
-                  {% if failed_test.get('actual') is not none %}
-                    <div style="margin-top: 0.5rem; font-size: 0.9em;">
-                      <strong>Получено:</strong>
-                      <code class="test-output-code" style="display: block; margin-top: 0.25rem; padding: 0.5rem; background: #fff; border-radius: 4px; font-family: monospace;">{{ failed_test['actual'] }}</code>
-                    </div>
-                  {% endif %}
-                  
-                  {% if failed_test.get('message') %}
-                    <div style="margin-top: 0.5rem; font-size: 0.9em; color: #856404;">
-                      <strong>Сообщение:</strong> {{ failed_test['message'] }}
-                    </div>
-                  {% endif %}
-                  
-                  {% if failed_test.get('traceback') %}
-                    <div style="margin-top: 0.5rem; font-size: 0.85em; color: #721c24;">
-                      <details>
-                        <summary style="cursor: pointer; font-weight: bold;">Детали ошибки</summary>
-                        <pre class="test-traceback" style="margin-top: 0.5rem; padding: 0.5rem; background: #fff; border-radius: 4px; overflow-x: auto; white-space: pre-wrap;">{{ failed_test['traceback'] }}</pre>
-                      </details>
-                    </div>
-                {% endif %}
-              </div>
-              {% endif %}
-            {% endif %}
-          </div>
-        </div>
-      {% endif %}
+
+      <div id="judge-panel" class="judge-panel" aria-live="polite"></div>
       </div>
     </div>
     {% else %}
     <div class="problem-sandbox">
       <div class="panel">
-        <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
-          <h3 style="margin-bottom: 1rem;">Войдите в систему</h3>
-          <p style="margin-bottom: 1.5rem;">Для отправки решений необходимо войти в систему</p>
-          <a href="{{ url_for('login') }}" class="btn btn-primary">Войти</a>
+        <div class="login-required-box">
+          <h3>Войдите в систему</h3>
+          <p>Для запуска и отправки решений необходимо войти в систему</p>
+          <a href="{{ url_for('login') }}" class="btn">Войти</a>
         </div>
       </div>
     </div>
@@ -419,24 +258,229 @@
   <script>
     // Таймер решения
     let startTs = Date.now();
-    const form = document.querySelector('form');
-    if (form) {
-      form.addEventListener('submit', function(){
-        document.getElementById('duration_ms').value = String(Date.now() - startTs);
-        
-        // Обновляем значение textarea из CodeMirror перед отправкой
-        if (currentEditor) {
-          const textarea = currentEditor.getTextArea();
-          textarea.value = currentEditor.getValue();
-        }
-      });
-    }
+    const PROBLEM_ID = {{ problem['problem_id'] }};
     
     // Глобальная переменная для редактора
     let currentEditor = null;
     
     // Стартовый код
     const starterCode = `{{ problem['code_python3']|e }}`;
+
+    function getEditorCode() {
+      if (currentEditor) return currentEditor.getValue();
+      const ta = document.getElementById('code-python3');
+      return ta ? ta.value : '';
+    }
+
+    function setJudgeBusy(busy) {
+      const runBtn = document.getElementById('btn-run');
+      const submitBtn = document.getElementById('btn-submit');
+      if (runBtn) runBtn.disabled = busy;
+      if (submitBtn) submitBtn.disabled = busy;
+      if (busy) {
+        document.getElementById('judge-panel').innerHTML =
+          '<div class="judge-loading">Проверяем решение…</div>';
+      }
+    }
+
+    function escapeHtml(text) {
+      return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderJudgeResults(payload) {
+      const panel = document.getElementById('judge-panel');
+      if (!panel) return;
+      const results = payload.results || {};
+      const stats = payload.stats_for_chart || null;
+      const mode = results.mode || 'submit';
+
+      if (results.error && (!results.results || !results.results.length)) {
+        panel.innerHTML = `<div class="judge-fail"><strong>Ошибка:</strong> ${escapeHtml(results.error)}</div>`;
+        return;
+      }
+
+      if (results.passed) {
+        const pts = results.points_awarded || 0;
+        const title = mode === 'run'
+          ? 'Примеры пройдены'
+          : 'Поздравляем! Все тесты пройдены';
+        let html = `
+          <div class="judge-success">
+            <div class="judge-success-icon">✓</div>
+            <div>
+              <div class="judge-success-title">${title}</div>
+              <div class="judge-success-meta">
+                Пройдено ${results.passed_tests || 0} из ${results.total_tests || 0} тестов
+                ${mode === 'run' ? ' (быстрый прогон)' : ''}
+              </div>
+              ${pts > 0 ? `<div class="judge-points">+${pts} очков</div>` : ''}
+            </div>
+          </div>`;
+        if (stats && mode === 'submit') {
+          html += `
+            <div class="performance-charts">
+              <div class="performance-chart">
+                <div class="perf-chart-head">
+                  <div>
+                    <div class="perf-chart-label">Время выполнения</div>
+                    <div class="perf-chart-value">${Math.round((results.execution_time || 0) * 1000)} ms</div>
+                  </div>
+                  ${stats.others_count > 0 ? `<div class="perf-percentile">Быстрее чем ${stats.time_percentile}%</div>` : ''}
+                </div>
+                <div class="perf-chart-canvas"><canvas id="timeChart"></canvas></div>
+              </div>
+              <div class="performance-chart">
+                <div class="perf-chart-head">
+                  <div>
+                    <div class="perf-chart-label">Использование памяти</div>
+                    <div class="perf-chart-value">${Number(results.memory_used || results.max_memory_mb || 0).toFixed(1)} MB</div>
+                  </div>
+                  ${stats.others_count > 0 ? `<div class="perf-percentile">Меньше чем ${stats.memory_percentile}%</div>` : ''}
+                </div>
+                <div class="perf-chart-canvas"><canvas id="memoryChart"></canvas></div>
+              </div>
+            </div>`;
+        }
+        panel.innerHTML = html;
+        if (stats && mode === 'submit') {
+          requestAnimationFrame(() => renderPerfCharts(stats, results));
+        }
+        return;
+      }
+
+      const failed = (results.results || []).find(r => r.status !== 'OK');
+      if (!failed) {
+        panel.innerHTML = `<div class="judge-fail">Решение не принято</div>`;
+        return;
+      }
+      const statusLabel = failed.status === 'WA'
+        ? 'Неверный ответ'
+        : (failed.status === 'TIMEOUT' ? 'Превышено время' : 'Ошибка выполнения');
+      panel.innerHTML = `
+        <div class="judge-fail">
+          <div class="judge-fail-title">Тест ${escapeHtml(failed.case)}: ${statusLabel}</div>
+          ${failed.input != null ? `<div class="judge-kv"><span>Вход</span><code>${escapeHtml(typeof failed.input === 'string' ? failed.input : JSON.stringify(failed.input))}</code></div>` : ''}
+          ${failed.expected != null ? `<div class="judge-kv"><span>Ожидалось</span><code>${escapeHtml(typeof failed.expected === 'string' ? failed.expected : JSON.stringify(failed.expected))}</code></div>` : ''}
+          ${failed.actual != null ? `<div class="judge-kv"><span>Получено</span><code>${escapeHtml(typeof failed.actual === 'string' ? failed.actual : JSON.stringify(failed.actual))}</code></div>` : ''}
+          ${failed.message ? `<div class="judge-msg">${escapeHtml(failed.message)}</div>` : ''}
+          ${failed.traceback ? `<details class="judge-trace"><summary>Детали ошибки</summary><pre>${escapeHtml(failed.traceback)}</pre></details>` : ''}
+          ${mode === 'run' ? '<div class="judge-hint">Это быстрый прогон. Нажмите «Отправить» для полной проверки.</div>' : ''}
+        </div>`;
+    }
+
+    function renderPerfCharts(statsData, results) {
+      if (typeof Chart === 'undefined') return;
+      const current = statsData.current || {};
+      const timeCtx = document.getElementById('timeChart');
+      if (timeCtx && statsData.time_bins) {
+        const timeBins = statsData.time_bins;
+        const currentTimeMs = (current.execution_time || results.execution_time || 0) * 1000;
+        const labels = [];
+        const dataCounts = [];
+        for (let i = 0; i < timeBins.counts.length; i++) {
+          const start = timeBins.min + i * timeBins.bin_width;
+          const end = start + timeBins.bin_width;
+          labels.push(`${Math.round(start)}-${Math.round(end)}`);
+          dataCounts.push(timeBins.counts[i]);
+        }
+        new Chart(timeCtx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              data: dataCounts,
+              backgroundColor: 'rgba(99, 102, 241, 0.6)',
+              borderColor: 'rgba(99, 102, 241, 1)',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { title: { display: true, text: 'ms' }, grid: { display: false } },
+              y: { beginAtZero: true, ticks: { stepSize: 1 } }
+            }
+          }
+        });
+      }
+      const memoryCtx = document.getElementById('memoryChart');
+      if (memoryCtx && statsData.memory_bins) {
+        const memBins = statsData.memory_bins;
+        const labels = [];
+        const dataCounts = [];
+        for (let i = 0; i < memBins.counts.length; i++) {
+          const start = memBins.min + i * memBins.bin_width;
+          const end = start + memBins.bin_width;
+          labels.push(`${start.toFixed(1)}-${end.toFixed(1)}`);
+          dataCounts.push(memBins.counts[i]);
+        }
+        new Chart(memoryCtx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              data: dataCounts,
+              backgroundColor: 'rgba(16, 185, 129, 0.55)',
+              borderColor: 'rgba(16, 185, 129, 1)',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { title: { display: true, text: 'MB' }, grid: { display: false } },
+              y: { beginAtZero: true, ticks: { stepSize: 1 } }
+            }
+          }
+        });
+      }
+    }
+
+    async function judgeRequest(mode) {
+      const code = getEditorCode();
+      if (!code.trim()) {
+        document.getElementById('judge-panel').innerHTML =
+          '<div class="judge-fail">Код решения не может быть пустым</div>';
+        return;
+      }
+      const durationMs = Date.now() - startTs;
+      const durationEl = document.getElementById('duration_ms');
+      if (durationEl) durationEl.value = String(durationMs);
+      setJudgeBusy(true);
+      try {
+        const resp = await fetch(`/api/problem/${PROBLEM_ID}/${mode}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({ code, duration_ms: durationMs })
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          document.getElementById('judge-panel').innerHTML =
+            `<div class="judge-fail">${escapeHtml(data.error || 'Ошибка запроса')}</div>`;
+          return;
+        }
+        renderJudgeResults(data);
+      } catch (err) {
+        document.getElementById('judge-panel').innerHTML =
+          `<div class="judge-fail">Сеть/сервер: ${escapeHtml(err.message || err)}</div>`;
+      } finally {
+        setJudgeBusy(false);
+      }
+    }
+
+    function runSolution() { return judgeRequest('run'); }
+    function submitSolution() { return judgeRequest('submit'); }
     
     // Инициализация CodeMirror для редактора
     function initCodeMirror(textareaId, mode) {
@@ -469,7 +513,11 @@
           },
           "Shift-Tab": function(cm) {
             cm.indentSelection("subtract");
-          }
+          },
+          "Ctrl-Enter": function() { submitSolution(); },
+          "Cmd-Enter": function() { submitSolution(); },
+          "Ctrl-'": function() { runSolution(); },
+          "Cmd-'": function() { runSolution(); }
         }
       });
       
@@ -547,203 +595,6 @@
     });
   </script>
   
-  {% if stats_for_chart %}
-  <script>
-    // Графики сравнения производительности
-    const statsData = {{ stats_for_chart|tojson }};
-    const current = statsData.current || {};
-    
-    // График времени выполнения — как на LeetCode: гистограмма с вертикальным маркером
-    const timeCtx = document.getElementById('timeChart');
-    if (timeCtx && statsData.time_bins) {
-      const timeBins = statsData.time_bins; // {min, max, bin_width, counts}
-      const currentTimeMs = current.execution_time * 1000;
-
-      const labels = [];
-      const dataCounts = [];
-      for (let i = 0; i < timeBins.counts.length; i++) {
-        const start = timeBins.min + i * timeBins.bin_width;
-        const end = start + timeBins.bin_width;
-        labels.push(`${Math.round(start)}-${Math.round(end)}`);
-        dataCounts.push(timeBins.counts[i]);
-      }
-
-      const timeLinePlugin = {
-        id: 'timeLinePlugin',
-        afterDatasetsDraw: function(chart) {
-          const meta = chart.getDatasetMeta(0);
-          if (!meta || !meta.data || meta.data.length === 0) return;
-          let idx = 0;
-          if (timeBins.bin_width > 0) {
-            idx = Math.floor((currentTimeMs - timeBins.min) / timeBins.bin_width);
-            if (idx < 0) idx = 0;
-            if (idx >= meta.data.length) idx = meta.data.length - 1;
-          }
-          const bar = meta.data[idx];
-          if (!bar) return;
-          const x = bar.x;
-          const yScale = chart.scales.y;
-          const ctx = chart.ctx;
-          ctx.save();
-          ctx.strokeStyle = 'rgba(34, 197, 94, 1)';
-          ctx.lineWidth = 2;
-          ctx.setLineDash([5, 5]);
-          ctx.beginPath();
-          ctx.moveTo(x, yScale.top);
-          ctx.lineTo(x, yScale.bottom);
-          ctx.stroke();
-          ctx.restore();
-        }
-      };
-
-      const timeChart = new Chart(timeCtx, {
-        type: 'bar',
-        plugins: [timeLinePlugin],
-        data: {
-          labels,
-          datasets: [{
-            label: 'Количество решений',
-            data: dataCounts,
-            backgroundColor: labels.map((_, i) => 'rgba(99, 102, 241, 0.6)'),
-            borderColor: labels.map((_, i) => 'rgba(99, 102, 241, 1)'),
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                title: (items) => items[0]?.label || '',
-                label: (ctx) => `${ctx.parsed.y} решений`
-              }
-            }
-          },
-          scales: {
-            x: {
-              title: { display: true, text: 'Время выполнения (ms)' },
-              grid: { display: false }
-            },
-            y: {
-              title: { display: true, text: 'Количество решений' },
-              beginAtZero: true,
-              ticks: { stepSize: 1 }
-            }
-          }
-        }
-      });
-    }
-    
-    // График использования памяти
-    const memoryCtx = document.getElementById('memoryChart');
-    if (memoryCtx && statsData.memory_bins) {
-      const memoryBins = statsData.memory_bins;
-      const currentMemory = current.memory_used;
-      
-      // Создаем данные для гистограммы
-      const binLabels = [];
-      const binData = [];
-      const binColors = [];
-      
-      for (let i = 0; i < memoryBins.counts.length; i++) {
-        const binStart = memoryBins.min + i * memoryBins.bin_width;
-        const binEnd = binStart + memoryBins.bin_width;
-        binLabels.push(`${binStart.toFixed(1)}-${binEnd.toFixed(1)}`);
-        binData.push(memoryBins.counts[i]);
-        
-        // Проверяем, попадает ли текущее значение в этот bin
-        if (currentMemory >= binStart && currentMemory < binEnd) {
-          binColors.push('rgba(34, 197, 94, 0.8)'); // Зеленый для текущего решения
-        } else {
-          binColors.push('rgba(99, 102, 241, 0.6)'); // Синий для других
-        }
-      }
-      
-      // Плагин для рисования вертикальной линии
-      const memoryLinePlugin = {
-        id: 'memoryLinePlugin',
-        afterDatasetsDraw: function(chart) {
-          const meta = chart.getDatasetMeta(0);
-          if (!meta || !meta.data || meta.data.length === 0) return;
-          let idx = 0;
-          if (memoryBins.bin_width > 0) {
-            idx = Math.floor((currentMemory - memoryBins.min) / memoryBins.bin_width);
-            if (idx < 0) idx = 0;
-            if (idx >= meta.data.length) idx = meta.data.length - 1;
-          }
-          const bar = meta.data[idx];
-          if (!bar) return;
-          const x = bar.x;
-          const yScale = chart.scales.y;
-          const ctx = chart.ctx;
-          ctx.save();
-          ctx.strokeStyle = 'rgba(34, 197, 94, 1)';
-          ctx.lineWidth = 2;
-          ctx.setLineDash([5, 5]);
-          ctx.beginPath();
-          ctx.moveTo(x, yScale.top);
-          ctx.lineTo(x, yScale.bottom);
-          ctx.stroke();
-          ctx.restore();
-        }
-      };
-      
-      const memoryChart = new Chart(memoryCtx, {
-        type: 'bar',
-        plugins: [memoryLinePlugin],
-        data: {
-          labels: binLabels,
-          datasets: [{
-            label: 'Количество решений',
-            data: binData,
-            backgroundColor: binColors,
-            borderColor: binColors.map(c => c.replace('0.6', '1').replace('0.8', '1')),
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              display: false
-            },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  return `${context.parsed.y} решений`;
-                }
-              }
-            }
-          },
-          scales: {
-            x: {
-              title: {
-                display: true,
-                text: 'Использование памяти (MB)'
-              },
-              grid: {
-                display: false
-              }
-            },
-            y: {
-              title: {
-                display: true,
-                text: 'Количество решений'
-              },
-              beginAtZero: true,
-              ticks: {
-                stepSize: 1
-              }
-            }
-          }
-        }
-      });
-    }
-  </script>
-  {% endif %}
   
   <script>
     // AJAX для реакций на комментарии

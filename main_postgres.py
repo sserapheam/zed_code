@@ -373,17 +373,7 @@ def create_app() -> Flask:
 
     @app.route("/problems-list")
     def problems_list():
-        user_id = session.get("user_id")
-        if not user_id:
-            return redirect(url_for("login"))
-        problems = execute_query(g.db,
-            """
-            SELECT problem_id, title, difficulty
-            FROM leetcode_problems_with_tests
-            ORDER BY problem_id
-            """
-        )
-        return render_template("problems_list.html", problems=problems)
+        return redirect(url_for("problems"))
 
     @app.route("/problems")
     def problems():
@@ -639,11 +629,42 @@ def create_app() -> Flask:
             "SELECT username, display_name, bio, avatar_path, points FROM users WHERE id=%s",
             (user_id,),
         )
-        return render_template("profile.html", user=user)
+        stats = execute_one(
+            g.db,
+            """
+            SELECT
+              (SELECT COUNT(*) FROM problem_test_results WHERE user_id=%s) AS submissions_count,
+              (SELECT COUNT(DISTINCT problem_id) FROM problem_test_results
+               WHERE user_id=%s AND status='passed') AS solved_count
+            """,
+            (user_id, user_id),
+        )
+        return render_template(
+            "profile.html",
+            user=user,
+            submissions_count=(stats or {}).get("submissions_count") or 0,
+            solved_count=(stats or {}).get("solved_count") or 0,
+        )
 
     @app.route("/leaderboard")
     def leaderboard():
-        top = execute_query(g.db, "SELECT username, display_name, avatar_path, points FROM users ORDER BY points DESC, id ASC LIMIT 20"
+        top = execute_query(
+            g.db,
+            """
+            SELECT
+              u.username,
+              u.display_name,
+              u.avatar_path,
+              u.points,
+              COALESCE((
+                SELECT COUNT(DISTINCT ptr.problem_id)
+                FROM problem_test_results ptr
+                WHERE ptr.user_id = u.id AND ptr.status = 'passed'
+              ), 0) AS solved_count
+            FROM users u
+            ORDER BY u.points DESC, u.id ASC
+            LIMIT 20
+            """,
         )
         return render_template("leaderboard.html", top=top)
     
@@ -668,6 +689,258 @@ def create_app() -> Flask:
             })
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+    def _load_problem_tests(problem_row):
+        tests_raw = problem_row.get("tests") if problem_row else None
+        if isinstance(tests_raw, str):
+            return json.loads(tests_raw)
+        if isinstance(tests_raw, (list, dict)):
+            return tests_raw
+        return []
+
+    def _build_chart_stats(problem_id: int, results: dict):
+        try:
+            cursor = get_cursor(g.db)
+            cursor.execute(
+                """
+                SELECT execution_time, memory_used
+                FROM problem_test_results
+                WHERE problem_id = %s AND status = 'passed' AND memory_used IS NOT NULL
+                ORDER BY created_at DESC
+                LIMIT 100
+                """,
+                (problem_id,),
+            )
+            stats_data = cursor.fetchall()
+            cursor.close()
+        except Exception:
+            return None
+
+        if not stats_data:
+            return None
+
+        others_data = [
+            {
+                "execution_time": float(row["execution_time"] or 0),
+                "memory_used": float(row["memory_used"] or 0),
+            }
+            for row in stats_data
+        ]
+        current_time = float(results.get("execution_time", 0.0) or 0.0)
+        current_memory = float(
+            results.get("memory_used", results.get("max_memory_mb", 0.0)) or 0.0
+        )
+
+        time_values = sorted([o["execution_time"] * 1000 for o in others_data])
+        memory_values = sorted([o["memory_used"] for o in others_data])
+        current_time_ms = current_time * 1000
+        worse_time_count = sum(1 for t in time_values if t > current_time_ms)
+        time_percentile = int((worse_time_count / len(time_values)) * 100) if time_values else 0
+        worse_memory_count = sum(1 for m in memory_values if m > current_memory)
+        memory_percentile = (
+            int((worse_memory_count / len(memory_values)) * 100) if memory_values else 0
+        )
+
+        def _bins(values):
+            if not values:
+                return None
+            vmin, vmax = min(values), max(values)
+            if vmax - vmin <= 0:
+                return {"min": vmin, "max": vmax, "bin_width": 1, "counts": [len(values)]}
+            bin_width = (vmax - vmin) / 10
+            counts = [0] * 10
+            for v in values:
+                idx = min(int((v - vmin) / bin_width), 9)
+                counts[idx] += 1
+            return {"min": vmin, "max": vmax, "bin_width": bin_width, "counts": counts}
+
+        return {
+            "current": {"execution_time": current_time, "memory_used": current_memory},
+            "others": others_data,
+            "time_percentile": time_percentile,
+            "memory_percentile": memory_percentile,
+            "time_bins": _bins(time_values),
+            "memory_bins": _bins(memory_values),
+            "others_count": len(others_data),
+        }
+
+    @app.route("/api/problem/<int:problem_id>/run", methods=["POST"])
+    def api_problem_run(problem_id: int):
+        """Быстрый прогон: первые тесты, без сохранения и без очков."""
+        user_id = session.get("user_id")
+        if not user_id:
+            return jsonify({"error": "unauthorized"}), 401
+
+        payload = request.get_json(silent=True) or {}
+        user_code = (payload.get("code") or "").strip()
+        if not user_code:
+            return jsonify({"error": "Код решения не может быть пустым"}), 400
+
+        problem_row = execute_one(
+            g.db,
+            """
+            SELECT problem_id, tests
+            FROM leetcode_problems_with_tests
+            WHERE problem_id=%s
+            """,
+            (problem_id,),
+        )
+        if not problem_row:
+            return jsonify({"error": "Задача не найдена"}), 404
+
+        try:
+            tests_data = _load_problem_tests(problem_row)
+        except Exception as e:
+            return jsonify({"error": f"Ошибка парсинга тестов: {e}"}), 500
+
+        if not tests_data:
+            return jsonify({"error": "Для этой задачи нет тестов"}), 400
+
+        sample = tests_data[: min(3, len(tests_data))]
+        report = judge_user_code_with_tests(
+            user_code, sample, language="python3", time_limit_sec=2.0
+        )
+        report["mode"] = "run"
+        report["sample_only"] = True
+        report["points_awarded"] = 0
+        report["results"] = convert_special_floats_for_json(report.get("results", []))
+        session[f"code_{problem_id}"] = user_code
+        return jsonify({"success": True, "results": report})
+
+    @app.route("/api/problem/<int:problem_id>/submit", methods=["POST"])
+    def api_problem_submit(problem_id: int):
+        """Полная отправка: все тесты, сохранение и начисление очков."""
+        user_id = session.get("user_id")
+        if not user_id:
+            return jsonify({"error": "unauthorized"}), 401
+
+        payload = request.get_json(silent=True) or {}
+        user_code = (payload.get("code") or "").strip()
+        if not user_code:
+            return jsonify({"error": "Код решения не может быть пустым"}), 400
+
+        problem_row = execute_one(
+            g.db,
+            """
+            SELECT problem_id, difficulty, tests
+            FROM leetcode_problems_with_tests
+            WHERE problem_id=%s
+            """,
+            (problem_id,),
+        )
+        if not problem_row:
+            return jsonify({"error": "Задача не найдена"}), 404
+
+        try:
+            tests_data = _load_problem_tests(problem_row)
+        except Exception as e:
+            return jsonify({"error": f"Ошибка парсинга тестов: {e}"}), 500
+
+        if not tests_data:
+            return jsonify({"error": "Для этой задачи нет тестов"}), 400
+
+        session[f"code_{problem_id}"] = user_code
+
+        try:
+            report = judge_user_code_with_tests(
+                user_code, tests_data, language="python3", time_limit_sec=2.0
+            )
+        except Exception as e:
+            try:
+                cursor = get_cursor(g.db)
+                cursor.execute(
+                    """
+                    INSERT INTO problem_test_results(
+                        problem_id, user_id, solution_code, status, error_message, created_at
+                    )
+                    VALUES(%s, %s, %s, %s, %s, NOW())
+                    """,
+                    (problem_id, user_id, user_code, "error", str(e)),
+                )
+                g.db.commit()
+                cursor.close()
+            except Exception:
+                try:
+                    g.db.rollback()
+                except Exception:
+                    pass
+            return jsonify({"success": False, "error": str(e), "results": {
+                "passed": False, "status": "error", "error": str(e), "results": []
+            }}), 500
+
+        memory_used = report.get("memory_used", report.get("max_memory_mb", 0.0)) or 0.0
+        results_for_json = convert_special_floats_for_json(report.get("results", []))
+        points_awarded = 0
+        cursor = get_cursor(g.db)
+        try:
+            cursor.execute(
+                """
+                INSERT INTO problem_test_results(
+                    problem_id, user_id, solution_code, test_results,
+                    passed_tests, total_tests, execution_time, memory_used, status, created_at
+                )
+                VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                """,
+                (
+                    problem_id,
+                    user_id,
+                    user_code,
+                    json.dumps(results_for_json, ensure_ascii=False),
+                    report.get("passed_tests", 0),
+                    report.get("total_tests", 0),
+                    report.get("execution_time", 0.0),
+                    memory_used,
+                    report.get("status", "failed"),
+                ),
+            )
+
+            if report.get("passed"):
+                prev_passed = execute_one(
+                    g.db,
+                    """
+                    SELECT 1 FROM problem_test_results
+                    WHERE user_id=%s AND problem_id=%s AND status='passed'
+                      AND id < (SELECT MAX(id) FROM problem_test_results
+                                WHERE user_id=%s AND problem_id=%s)
+                    LIMIT 1
+                    """,
+                    (user_id, problem_id, user_id, problem_id),
+                )
+                if not prev_passed:
+                    difficulty = problem_row.get("difficulty") or "Easy"
+                    points_awarded = (
+                        100 if difficulty == "Easy"
+                        else (200 if difficulty == "Medium" else 300)
+                    )
+                    cursor.execute(
+                        "UPDATE users SET points = COALESCE(points,0) + %s WHERE id=%s",
+                        (points_awarded, user_id),
+                    )
+
+            g.db.commit()
+        except Exception as e:
+            try:
+                g.db.rollback()
+            except Exception:
+                pass
+            return jsonify({"success": False, "error": str(e)}), 500
+        finally:
+            cursor.close()
+
+        report["mode"] = "submit"
+        report["sample_only"] = False
+        report["points_awarded"] = points_awarded
+        report["memory_used"] = memory_used
+        report["results"] = results_for_json
+        stats_for_chart = None
+        if report.get("passed"):
+            stats_for_chart = _build_chart_stats(problem_id, report)
+
+        return jsonify({
+            "success": True,
+            "results": report,
+            "stats_for_chart": stats_for_chart,
+        })
 
     @app.route("/problem/<int:problem_id>", methods=["GET", "POST"])
     def problem(problem_id: int):
