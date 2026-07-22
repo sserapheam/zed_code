@@ -95,6 +95,35 @@
         <input type="text" name="display_name" value="{{ user['display_name'] or '' }}" placeholder="Ваше имя"/>
       </label>
       <label>
+        Email
+        <input
+          type="email"
+          name="email"
+          required
+          maxlength="255"
+          value="{{ user['email'] or '' }}"
+          placeholder="you@yandex.ru"
+          autocomplete="email"
+        />
+      </label>
+      <p class="field-hint muted">Нужен для восстановления пароля. Не показывается другим пользователям.</p>
+      {% if not user.get('pdn_consent_at') %}
+        <label class="consent-row">
+          <input type="checkbox" name="pdn_consent" value="1" required />
+          <span>
+            Согласие на обработку персональных данных
+            (версия {{ consent_version }}) —
+            <a href="{{ url_for('privacy_policy') }}" target="_blank" rel="noopener">политика</a>
+          </span>
+        </label>
+      {% else %}
+        <p class="field-hint muted">
+          Согласие на обработку ПДн получено
+          {% if user.get('pdn_consent_version') %}(версия {{ user['pdn_consent_version'] }}){% endif %}.
+          <a href="{{ url_for('privacy_policy') }}">Политика</a>
+        </p>
+      {% endif %}
+      <label>
         О себе
         <textarea name="bio" rows="4" placeholder="Расскажите о себе...">{{ user['bio'] or '' }}</textarea>
       </label>

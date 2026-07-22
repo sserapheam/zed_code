@@ -2030,24 +2030,7 @@ html.dark-theme .hint-content {
   padding: 0;
 }
 
-/* Принудительное выравнивание текста */
-.CodeMirror .CodeMirror-line > span {
-  text-align: left !important;
-  direction: ltr !important;
-}
-
-/* Дополнительные исправления для смещения */
-.CodeMirror .CodeMirror-line {
-  text-align: left !important;
-  direction: ltr !important;
-  unicode-bidi: normal !important;
-}
-
-.CodeMirror .CodeMirror-line > span > span {
-  text-align: left !important;
-  direction: ltr !important;
-  unicode-bidi: normal !important;
-}
+/* Убраны span-level direction/unicode-bidi — ломали копирование в CodeMirror */
 
 /* Исправление для всех языков */
 .CodeMirror.cm-s-default,
@@ -2090,11 +2073,25 @@ html.dark-theme .hint-content {
   transform: none !important;
 }
 
-/* Принудительное исправление для всех элементов CodeMirror */
-.CodeMirror * {
+/* Принудительное выравнивание — только на уровне редактора, не на каждом span
+   (иначе Ctrl+C копирует пустоту/пробелы из-за unicode-bidi) */
+.problem-page .CodeMirror {
   direction: ltr !important;
   text-align: left !important;
-  unicode-bidi: normal !important;
+}
+
+/* НЕ трогаем внутренний textarea CodeMirror — он отвечает за копирование */
+.problem-page .CodeMirror textarea {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  z-index: -1 !important;
+  resize: none !important;
 }
 
 /* Исправление для контейнеров редакторов */
@@ -2109,16 +2106,11 @@ html.dark-theme .hint-content {
   overflow: visible !important;
 }
 
-.code-editor textarea {
-  position: relative !important;
-  left: 0 !important;
-  top: 0 !important;
-  transform: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  width: 100% !important;
-  direction: ltr !important;
-  text-align: left !important;
+/* Старый textarea до инициализации CM (не внутренний скрытый input) */
+.code-editor-container > textarea#code-python3 {
+  width: 100%;
+  direction: ltr;
+  text-align: left;
 }
 
 .CodeMirror-focused {
@@ -5561,4 +5553,184 @@ span.btn.is-disabled {
   opacity: 0.45;
   pointer-events: none;
   cursor: default;
+}
+
+/* ========================================
+   РЕДАКТОР РЕШЕНИЯ (страница задачи)
+   ======================================== */
+
+.code-editor-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.code-editor-heading h2 {
+  margin: 0;
+}
+
+.editor-lang-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: var(--radius-sm);
+}
+
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.editor-hint {
+  font-size: 0.78rem;
+  margin-left: auto;
+}
+
+#code-editor-wrap {
+  resize: vertical;
+  overflow: hidden;
+  min-height: 360px;
+  max-height: 75vh;
+  height: 520px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+}
+
+#code-editor-wrap .CodeMirror {
+  min-height: 100%;
+  height: 100% !important;
+  border: none;
+  border-radius: 0;
+}
+
+.code-editor-container .CodeMirror,
+.code-editor-container .CodeMirror .CodeMirror-code {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+.CodeMirror-selected {
+  background: rgba(99, 102, 241, 0.28) !important;
+}
+
+.dark-theme .CodeMirror-selected,
+html.dark-theme .CodeMirror-selected {
+  background: rgba(129, 140, 248, 0.35) !important;
+}
+
+.editor-toast {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 10000;
+  padding: 0.65rem 1rem;
+  background: var(--text);
+  color: var(--bg);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.judge-kv code,
+.judge-trace pre,
+.judge-msg {
+  user-select: text;
+  cursor: text;
+}
+
+@media (max-width: 768px) {
+  .editor-hint {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  #code-editor-wrap {
+    height: 420px;
+    min-height: 280px;
+  }
+}
+
+.consent-row {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  font-weight: 400;
+  line-height: 1.45;
+  font-size: 0.92rem;
+}
+
+.consent-row input[type="checkbox"] {
+  width: auto;
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.consent-row a {
+  color: var(--primary);
+}
+
+.legal-panel {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.legal-panel h1 {
+  font-size: 1.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.legal-panel h2 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.legal-panel ul {
+  padding-left: 1.25rem;
+  margin: 0.5rem 0 0;
+}
+
+.legal-panel li {
+  margin-bottom: 0.35rem;
+}
+
+.legal-note {
+  padding: 0.75rem 1rem;
+  margin: 1rem 0 1.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.site-footer {
+  margin-top: 2.5rem;
+  padding: 1.25rem 0 2rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+
+.site-footer .container {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.site-footer a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  color: var(--primary);
 }

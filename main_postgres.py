@@ -385,13 +385,56 @@ def create_app() -> Flask:
         )
 
     USERNAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{2,31}$")
+    EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
     PASSWORD_MIN_LEN = 8
     PASSWORD_MAX_LEN = 128
+    PDN_CONSENT_VERSION = "2026-07-22"
     RESERVED_USERNAMES = frozenset({
         "admin", "administrator", "root", "system", "support",
         "moderator", "mod", "null", "undefined", "api", "www",
         "help", "official", "zedcode", "zed_code",
     })
+
+    def _ensure_user_privacy_schema():
+        """Email + фиксация согласия на обработку ПДн (152-ФЗ, UI/аудит)."""
+        try:
+            cursor = get_cursor(g.db)
+            cursor.execute(
+                """
+                ALTER TABLE users
+                  ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+                  ADD COLUMN IF NOT EXISTS pdn_consent_at TIMESTAMPTZ,
+                  ADD COLUMN IF NOT EXISTS pdn_consent_version VARCHAR(32)
+                """
+            )
+            cursor.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_ci
+                ON users (lower(email))
+                WHERE email IS NOT NULL AND email <> ''
+                """
+            )
+            g.db.commit()
+            cursor.close()
+        except Exception as e:
+            print(f"privacy schema ensure: {e}")
+            try:
+                g.db.rollback()
+            except Exception:
+                pass
+
+    def _normalize_email(email: str) -> str:
+        return (email or "").strip().lower()
+
+    def _validate_email(email: str, required: bool = True) -> Optional[str]:
+        email = _normalize_email(email)
+        if not email:
+            return "Укажите email" if required else None
+        if len(email) > 255:
+            return "Email слишком длинный"
+        if not EMAIL_RE.match(email):
+            return "Некорректный формат email"
+        return None
 
     def _validate_password(password: str, password2: str, username: str = "") -> Optional[str]:
         if not password:
@@ -410,7 +453,13 @@ def create_app() -> Flask:
             return "Пароль не должен начинаться или заканчиваться пробелом"
         return None
 
-    def _validate_registration(username: str, password: str, password2: str) -> Optional[str]:
+    def _validate_registration(
+        username: str,
+        password: str,
+        password2: str,
+        email: str,
+        consent: bool,
+    ) -> Optional[str]:
         if not username or not password:
             return "Введите логин и пароль"
         if len(username) < 3 or len(username) > 32:
@@ -422,36 +471,85 @@ def create_app() -> Flask:
             )
         if username.lower() in RESERVED_USERNAMES:
             return "Это имя занято системой, выберите другое"
+        email_err = _validate_email(email, required=True)
+        if email_err:
+            return email_err
+        if not consent:
+            return "Нужно согласие на обработку персональных данных"
         return _validate_password(password, password2, username)
+
+    @app.route("/privacy")
+    def privacy_policy():
+        return render_template(
+            "privacy.html",
+            consent_version=PDN_CONSENT_VERSION,
+        )
 
     @app.route("/register", methods=["GET", "POST"])
     def register():
+        _ensure_user_privacy_schema()
+        form_username = ""
+        form_email = ""
         if request.method == "POST":
             username = (request.form.get("username") or "").strip()
+            email = _normalize_email(request.form.get("email") or "")
             password = request.form.get("password") or ""
             password2 = request.form.get("password2") or ""
-            error = _validate_registration(username, password, password2)
+            consent = request.form.get("pdn_consent") in ("1", "on", "true", "yes")
+            form_username = username
+            form_email = email
+            error = _validate_registration(username, password, password2, email, consent)
             if error:
                 flash(error, "error")
-                return render_template("register.html", username=username)
+                return render_template(
+                    "register.html",
+                    username=form_username,
+                    email=form_email,
+                    consent_version=PDN_CONSENT_VERSION,
+                )
             try:
                 cursor = get_cursor(g.db)
                 cursor.execute(
-                    "INSERT INTO users(username, password_hash, created_at) VALUES(%s,%s,NOW())",
-                    (username, generate_password_hash(password)),
+                    """
+                    INSERT INTO users(
+                        username, password_hash, email,
+                        pdn_consent_at, pdn_consent_version, created_at
+                    )
+                    VALUES(%s, %s, %s, NOW(), %s, NOW())
+                    """,
+                    (
+                        username,
+                        generate_password_hash(password),
+                        email,
+                        PDN_CONSENT_VERSION,
+                    ),
                 )
                 g.db.commit()
                 cursor.close()
                 flash("Регистрация прошла успешно. Войдите в аккаунт.", "success")
                 return redirect(url_for("login"))
-            except psycopg2.IntegrityError:
+            except psycopg2.IntegrityError as e:
                 try:
                     g.db.rollback()
                 except Exception:
                     pass
-                flash("Пользователь с таким именем уже существует", "error")
-                return render_template("register.html", username=username)
-        return render_template("register.html", username="")
+                err = str(e).lower()
+                if "email" in err:
+                    flash("Этот email уже используется", "error")
+                else:
+                    flash("Пользователь с таким именем уже существует", "error")
+                return render_template(
+                    "register.html",
+                    username=form_username,
+                    email=form_email,
+                    consent_version=PDN_CONSENT_VERSION,
+                )
+        return render_template(
+            "register.html",
+            username="",
+            email="",
+            consent_version=PDN_CONSENT_VERSION,
+        )
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -474,6 +572,7 @@ def create_app() -> Flask:
         return redirect(url_for("login"))
 
     def _ensure_password_reset_table():
+        _ensure_user_privacy_schema()
         try:
             cursor = get_cursor(g.db)
             cursor.execute(
@@ -497,7 +596,11 @@ def create_app() -> Flask:
                 pass
 
     def _mail_configured() -> bool:
-        return bool((os.environ.get("MAIL_SERVER") or "").strip())
+        return bool(
+            (os.environ.get("MAIL_SERVER") or "").strip()
+            and (os.environ.get("MAIL_USERNAME") or "").strip()
+            and (os.environ.get("MAIL_PASSWORD") or "").strip()
+        )
 
     def _send_mail(to_addr: str, subject: str, body: str) -> bool:
         host = (os.environ.get("MAIL_SERVER") or "").strip()
@@ -507,6 +610,7 @@ def create_app() -> Flask:
         user = (os.environ.get("MAIL_USERNAME") or "").strip()
         password = os.environ.get("MAIL_PASSWORD") or ""
         mail_from = (os.environ.get("MAIL_FROM") or user or "noreply@zedcode.local").strip()
+        use_ssl = (os.environ.get("MAIL_USE_SSL") or "").lower() in ("1", "true", "yes") or port == 465
         use_tls = (os.environ.get("MAIL_USE_TLS") or "true").lower() in ("1", "true", "yes")
         msg = EmailMessage()
         msg["Subject"] = subject
@@ -514,12 +618,18 @@ def create_app() -> Flask:
         msg["To"] = to_addr
         msg.set_content(body)
         try:
-            with smtplib.SMTP(host, port, timeout=20) as smtp:
-                if use_tls:
-                    smtp.starttls()
-                if user:
-                    smtp.login(user, password)
-                smtp.send_message(msg)
+            if use_ssl:
+                with smtplib.SMTP_SSL(host, port, timeout=20) as smtp:
+                    if user:
+                        smtp.login(user, password)
+                    smtp.send_message(msg)
+            else:
+                with smtplib.SMTP(host, port, timeout=20) as smtp:
+                    if use_tls:
+                        smtp.starttls()
+                    if user:
+                        smtp.login(user, password)
+                    smtp.send_message(msg)
             return True
         except Exception as e:
             print(f"MAIL ERROR: {e}")
@@ -527,12 +637,13 @@ def create_app() -> Flask:
 
     @app.route("/forgot-password", methods=["GET", "POST"])
     def forgot_password():
+        _ensure_password_reset_table()
         mail_ok = _mail_configured()
         allow_dev = (os.environ.get("ALLOW_DEV_RESET_LINK") or "").lower() in ("1", "true", "yes")
         if request.method == "POST":
-            username = (request.form.get("username") or "").strip()
-            if not username:
-                flash("Введите логин", "error")
+            login_or_email = (request.form.get("username") or request.form.get("login") or "").strip()
+            if not login_or_email:
+                flash("Введите логин или email", "error")
                 return render_template(
                     "forgot_password.html",
                     mail_configured=mail_ok,
@@ -540,8 +651,9 @@ def create_app() -> Flask:
                 )
             if not mail_ok and not allow_dev:
                 flash(
-                    "Сброс пароля по email пока не настроен. Добавьте MAIL_SERVER в .env "
-                    "или временно ALLOW_DEV_RESET_LINK=true для тестовой ссылки.",
+                    "Сброс пароля по email пока не настроен. "
+                    "Добавьте MAIL_SERVER / MAIL_USERNAME / MAIL_PASSWORD в .env "
+                    "(для Яндекса см. комментарии в .env.example).",
                     "error",
                 )
                 return render_template(
@@ -550,17 +662,29 @@ def create_app() -> Flask:
                     allow_dev=allow_dev,
                 )
 
-            _ensure_password_reset_table()
+            # Ищем по логину или email; не раскрываем, найден ли аккаунт
             user = execute_one(
                 g.db,
-                "SELECT id, username FROM users WHERE username=%s",
-                (username,),
+                """
+                SELECT id, username, email
+                FROM users
+                WHERE username = %s OR lower(email) = lower(%s)
+                LIMIT 1
+                """,
+                (login_or_email, login_or_email),
             )
-            flash(
-                "Если аккаунт найден, следуйте инструкциям для сброса пароля.",
-                "success",
+            generic_msg = (
+                "Если аккаунт с такими данными существует и к нему привязан email, "
+                "мы отправили ссылку для сброса пароля."
             )
+            flash(generic_msg, "success")
+
             if not user:
+                return redirect(url_for("login"))
+
+            user_email = _normalize_email(user.get("email") or "")
+            if not user_email and not allow_dev:
+                # Аккаунт без email — то же общее сообщение
                 return redirect(url_for("login"))
 
             raw_token = secrets.token_urlsafe(32)
@@ -590,23 +714,24 @@ def create_app() -> Flask:
                 cursor.close()
 
             reset_url = url_for("reset_password", token=raw_token, _external=True)
-            to_addr = (os.environ.get("MAIL_TO_OVERRIDE") or "").strip()
-            sent = False
-            if mail_ok and to_addr:
+            if user_email and mail_ok:
                 sent = _send_mail(
-                    to_addr,
-                    "Сброс пароля zedcode",
-                    f"Логин: {user['username']}\nСсылка (действует 1 час):\n{reset_url}\n",
+                    user_email,
+                    "Сброс пароля — zedcode",
+                    (
+                        f"Здравствуйте, {user['username']}!\n\n"
+                        f"Вы запросили сброс пароля на zedcode.\n"
+                        f"Ссылка действует 1 час:\n{reset_url}\n\n"
+                        f"Если это были не вы — просто проигнорируйте письмо.\n"
+                    ),
                 )
+                if not sent and not allow_dev:
+                    flash(
+                        "Не удалось отправить письмо. Проверьте SMTP-настройки или попробуйте позже.",
+                        "error",
+                    )
             if allow_dev:
-                flash(f"Ссылка для сброса ({user['username']}): {reset_url}", "success")
-            elif sent:
-                flash("Письмо со ссылкой отправлено.", "success")
-            elif mail_ok and not to_addr:
-                flash(
-                    "MAIL_SERVER задан, но нет MAIL_TO_OVERRIDE (в профиле пока нет email).",
-                    "error",
-                )
+                flash(f"[dev] Ссылка сброса ({user['username']}): {reset_url}", "success")
             return redirect(url_for("login"))
 
         return render_template(
@@ -942,6 +1067,7 @@ def create_app() -> Flask:
         user_id = session.get("user_id")
         if not user_id:
             return redirect(url_for("login"))
+        _ensure_user_privacy_schema()
         if request.method == "POST":
             form_action = (request.form.get("form_action") or "update_profile").strip()
 
@@ -992,6 +1118,24 @@ def create_app() -> Flask:
 
             display_name = (request.form.get("display_name") or "").strip()
             bio = (request.form.get("bio") or "").strip()
+            email = _normalize_email(request.form.get("email") or "")
+            consent = request.form.get("pdn_consent") in ("1", "on", "true", "yes")
+
+            current = execute_one(
+                g.db,
+                "SELECT email, pdn_consent_at FROM users WHERE id=%s",
+                (user_id,),
+            ) or {}
+            email_err = _validate_email(email, required=True)
+            if email_err:
+                flash(email_err, "error")
+                return redirect(url_for("profile"))
+            if not current.get("pdn_consent_at") and not consent:
+                flash(
+                    "Чтобы сохранить email, нужно согласие на обработку персональных данных",
+                    "error",
+                )
+                return redirect(url_for("profile"))
 
             avatar_file = request.files.get("avatar")
             avatar_path = None
@@ -999,7 +1143,7 @@ def create_app() -> Flask:
                 filename = secure_filename(avatar_file.filename)
                 name, ext = os.path.splitext(filename)
                 ext = ext.lower()
-                allowed = {".png": b"\x89PNG\r\n\x1a\n", ".jpg": None, ".jpeg": None, ".gif": b"GIF8"}
+                allowed = {".png", ".jpg", ".jpeg", ".gif"}
                 if ext not in allowed:
                     flash("Допустимы только изображения: PNG, JPG, GIF", "error")
                 else:
@@ -1025,23 +1169,61 @@ def create_app() -> Flask:
                             avatar_path = f"uploads/{unique_name}"
 
             cursor = get_cursor(g.db)
-            if avatar_path:
-                cursor.execute(
-                    "UPDATE users SET display_name=%s, bio=%s, avatar_path=%s WHERE id=%s",
-                    (display_name or None, bio or None, avatar_path, user_id),
-                )
-            else:
-                cursor.execute(
-                    "UPDATE users SET display_name=%s, bio=%s WHERE id=%s",
-                    (display_name or None, bio or None, user_id),
-                )
-            g.db.commit()
-            cursor.close()
+            try:
+                if avatar_path:
+                    cursor.execute(
+                        """
+                        UPDATE users
+                        SET display_name=%s, bio=%s, avatar_path=%s, email=%s
+                        WHERE id=%s
+                        """,
+                        (display_name or None, bio or None, avatar_path, email, user_id),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE users
+                        SET display_name=%s, bio=%s, email=%s
+                        WHERE id=%s
+                        """,
+                        (display_name or None, bio or None, email, user_id),
+                    )
+                if not current.get("pdn_consent_at") and consent:
+                    cursor.execute(
+                        """
+                        UPDATE users
+                        SET pdn_consent_at=NOW(), pdn_consent_version=%s
+                        WHERE id=%s
+                        """,
+                        (PDN_CONSENT_VERSION, user_id),
+                    )
+                g.db.commit()
+            except psycopg2.IntegrityError:
+                try:
+                    g.db.rollback()
+                except Exception:
+                    pass
+                flash("Этот email уже используется другим аккаунтом", "error")
+                return redirect(url_for("profile"))
+            except Exception:
+                try:
+                    g.db.rollback()
+                except Exception:
+                    pass
+                flash("Не удалось обновить профиль", "error")
+                return redirect(url_for("profile"))
+            finally:
+                cursor.close()
             flash("Профиль обновлён", "success")
             return redirect(url_for("profile"))
 
-        user = execute_one(g.db,
-            "SELECT username, display_name, bio, avatar_path, points FROM users WHERE id=%s",
+        user = execute_one(
+            g.db,
+            """
+            SELECT username, display_name, bio, avatar_path, points,
+                   email, pdn_consent_at, pdn_consent_version
+            FROM users WHERE id=%s
+            """,
             (user_id,),
         )
         stats = execute_one(
@@ -1065,6 +1247,7 @@ def create_app() -> Flask:
             activity_total=activity["total"],
             activity_total_label=activity["total_label"],
             activity_weekday_labels=activity["weekday_labels"],
+            consent_version=PDN_CONSENT_VERSION,
         )
 
     def _activity_level(count: int) -> int:

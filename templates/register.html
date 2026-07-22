@@ -27,6 +27,20 @@
       <p class="field-hint muted">3–32 символа: латиница, цифры и _; начинается с буквы</p>
 
       <label>
+        Email
+        <input
+          type="email"
+          name="email"
+          required
+          maxlength="255"
+          placeholder="you@example.com"
+          value="{{ email or '' }}"
+          autocomplete="email"
+        />
+      </label>
+      <p class="field-hint muted">Нужен для восстановления пароля</p>
+
+      <label>
         Пароль
         <input
           type="password"
@@ -51,6 +65,15 @@
           placeholder="Повторите пароль"
           autocomplete="new-password"
         />
+      </label>
+
+      <label class="consent-row">
+        <input type="checkbox" name="pdn_consent" value="1" required />
+        <span>
+          Я даю согласие на обработку персональных данных
+          (версия {{ consent_version }}) в соответствии с
+          <a href="{{ url_for('privacy_policy') }}" target="_blank" rel="noopener">политикой конфиденциальности</a>
+        </span>
       </label>
 
       <div class="actions">
