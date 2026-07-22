@@ -11,12 +11,12 @@
     <form method="post" class="form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <label>
-        Логин
-        <input type="text" name="username" required placeholder="Введите логин" />
+        Логин или email
+        <input type="text" name="username" required autocomplete="username" placeholder="логин или you@yandex.ru" />
       </label>
       <label>
         Пароль
-        <input type="password" name="password" required placeholder="Введите пароль" />
+        <input type="password" name="password" required autocomplete="current-password" placeholder="Введите пароль" />
       </label>
       <div class="actions">
         <button type="submit" class="btn" style="width: 100%; justify-content: center;">Войти</button>

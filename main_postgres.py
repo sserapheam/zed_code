@@ -555,16 +555,23 @@ def create_app() -> Flask:
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if request.method == "POST":
-            username = (request.form.get("username") or "").strip()
+            login_id = (request.form.get("username") or "").strip()
             password = request.form.get("password") or ""
-            user = execute_one(g.db,
-                "SELECT id, password_hash FROM users WHERE username=%s", (username,)
+            user = execute_one(
+                g.db,
+                """
+                SELECT id, username, password_hash
+                FROM users
+                WHERE username = %s OR lower(COALESCE(email, '')) = lower(%s)
+                LIMIT 1
+                """,
+                (login_id, login_id),
             )
             if user and check_password_hash(user["password_hash"], password):
                 session["user_id"] = user["id"]
-                session["username"] = username
+                session["username"] = user["username"]
                 return redirect(url_for("problems"))
-            flash("Неверный логин или пароль", "error")
+            flash("Неверный логин/email или пароль", "error")
         return render_template("login.html")
 
     @app.route("/logout", methods=["POST"])
@@ -2644,20 +2651,36 @@ def __zedcode_parse_input(raw_input):
     if text == "":
         return text
 
-    # Prefer JSON so bracket strings like "[{()}]" stay strings.
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
-    try:
-        val = ast.literal_eval(text)
-        if isinstance(val, set):
-            return text
-        if isinstance(val, list) and any(isinstance(x, (set, bytes)) for x in val):
-            return text
-        return val
-    except Exception:
+    # Bracket-only sequences are string inputs for parentheses problems.
+    if text[0] in "[{" and all(c in "()[]{} \t" for c in text):
         return text
+
+    # Prefer JSON so mixed structures parse; bare digit strings stay strings.
+    if text[0] in "[{":
+        try:
+            return json.loads(text)
+        except Exception:
+            pass
+        try:
+            val = ast.literal_eval(text)
+            if isinstance(val, set):
+                return text
+            if isinstance(val, list) and any(isinstance(x, (set, bytes)) for x in val):
+                return text
+            return val
+        except Exception:
+            return text
+    if text in ("true", "false", "null"):
+        try:
+            return json.loads(text)
+        except Exception:
+            return text
+    if text in ("True", "False", "None"):
+        try:
+            return ast.literal_eval(text)
+        except Exception:
+            return text
+    return text
 
 
 def __zedcode_call_method(solution, method_name, raw_input):
@@ -2684,9 +2707,6 @@ def __zedcode_call_method(solution, method_name, raw_input):
         # Multi-arg methods unpack when arity matches (legacy list-of-args format).
         if n_params is not None and n_params > 1 and n_params == len(parsed):
             return target(*parsed)
-        # Single-arg: unwrap OJ-style [string] only (keep [1] as array).
-        if n_params == 1 and len(parsed) == 1 and isinstance(parsed[0], str):
-            return target(parsed[0])
         return target(parsed)
 
     return target(parsed)
