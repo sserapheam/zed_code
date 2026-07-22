@@ -7,6 +7,7 @@ import hashlib
 import secrets
 import smtplib
 from email.message import EmailMessage
+from email.utils import formataddr, make_msgid, formatdate
 from datetime import datetime, date, timedelta
 from multiprocessing import Process, Queue
 from typing import Dict, List, Optional, Tuple
@@ -610,12 +611,19 @@ def create_app() -> Flask:
         user = (os.environ.get("MAIL_USERNAME") or "").strip()
         password = os.environ.get("MAIL_PASSWORD") or ""
         mail_from = (os.environ.get("MAIL_FROM") or user or "noreply@zedcode.local").strip()
+        mail_from_name = (os.environ.get("MAIL_FROM_NAME") or "zedcode").strip() or "zedcode"
         use_ssl = (os.environ.get("MAIL_USE_SSL") or "").lower() in ("1", "true", "yes") or port == 465
         use_tls = (os.environ.get("MAIL_USE_TLS") or "true").lower() in ("1", "true", "yes")
+        domain = mail_from.split("@")[-1] if "@" in mail_from else "localhost"
         msg = EmailMessage()
         msg["Subject"] = subject
-        msg["From"] = mail_from
+        msg["From"] = formataddr((mail_from_name, mail_from))
         msg["To"] = to_addr
+        msg["Reply-To"] = mail_from
+        msg["Date"] = formatdate(localtime=False)
+        msg["Message-ID"] = make_msgid(domain=domain)
+        msg["Auto-Submitted"] = "auto-generated"
+        msg["X-Auto-Response-Suppress"] = "All"
         msg.set_content(body)
         try:
             if use_ssl:
@@ -633,6 +641,25 @@ def create_app() -> Flask:
             return True
         except Exception as e:
             print(f"MAIL ERROR: {e}")
+            return False
+
+    def _password_reset_now():
+        from datetime import timezone
+        return datetime.now(timezone.utc)
+
+    def _password_reset_valid(row) -> bool:
+        if not row or row.get("used_at"):
+            return False
+        exp = row.get("expires_at")
+        if not exp:
+            return False
+        now = _password_reset_now()
+        if getattr(exp, "tzinfo", None) is None:
+            from datetime import timezone
+            exp = exp.replace(tzinfo=timezone.utc)
+        try:
+            return exp >= now
+        except TypeError:
             return False
 
     @app.route("/forgot-password", methods=["GET", "POST"])
@@ -662,7 +689,6 @@ def create_app() -> Flask:
                     allow_dev=allow_dev,
                 )
 
-            # Ищем по логину или email; не раскрываем, найден ли аккаунт
             user = execute_one(
                 g.db,
                 """
@@ -673,23 +699,24 @@ def create_app() -> Flask:
                 """,
                 (login_or_email, login_or_email),
             )
-            generic_msg = (
-                "Если аккаунт с такими данными существует и к нему привязан email, "
-                "мы отправили ссылку для сброса пароля."
+            # Не раскрываем, найден ли аккаунт
+            session["password_reset_hint"] = login_or_email
+            flash(
+                "Если аккаунт существует и к нему привязан email, "
+                "мы отправили код подтверждения. Введите его ниже.",
+                "success",
             )
-            flash(generic_msg, "success")
 
             if not user:
-                return redirect(url_for("login"))
+                return redirect(url_for("reset_password"))
 
             user_email = _normalize_email(user.get("email") or "")
             if not user_email and not allow_dev:
-                # Аккаунт без email — то же общее сообщение
-                return redirect(url_for("login"))
+                return redirect(url_for("reset_password"))
 
-            raw_token = secrets.token_urlsafe(32)
-            token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
-            expires = datetime.utcnow() + timedelta(hours=1)
+            raw_code = f"{secrets.randbelow(1_000_000):06d}"
+            token_hash = hashlib.sha256(raw_code.encode("utf-8")).hexdigest()
+            expires = _password_reset_now() + timedelta(minutes=15)
             cursor = get_cursor(g.db)
             try:
                 cursor.execute(
@@ -709,20 +736,21 @@ def create_app() -> Flask:
                     g.db.rollback()
                 except Exception:
                     pass
-                return redirect(url_for("login"))
+                return redirect(url_for("reset_password"))
             finally:
                 cursor.close()
 
-            reset_url = url_for("reset_password", token=raw_token, _external=True)
             if user_email and mail_ok:
                 sent = _send_mail(
                     user_email,
-                    "Сброс пароля — zedcode",
+                    "Код для сброса пароля — zedcode",
                     (
                         f"Здравствуйте, {user['username']}!\n\n"
                         f"Вы запросили сброс пароля на zedcode.\n"
-                        f"Ссылка действует 1 час:\n{reset_url}\n\n"
-                        f"Если это были не вы — просто проигнорируйте письмо.\n"
+                        f"Код подтверждения: {raw_code}\n\n"
+                        f"Код действует 15 минут. Никому его не сообщайте.\n"
+                        f"Если это были не вы — просто проигнорируйте письмо.\n\n"
+                        f"— команда zedcode\n"
                     ),
                 )
                 if not sent and not allow_dev:
@@ -731,8 +759,8 @@ def create_app() -> Flask:
                         "error",
                     )
             if allow_dev:
-                flash(f"[dev] Ссылка сброса ({user['username']}): {reset_url}", "success")
-            return redirect(url_for("login"))
+                flash(f"[dev] Код сброса ({user['username']}): {raw_code}", "success")
+            return redirect(url_for("reset_password"))
 
         return render_template(
             "forgot_password.html",
@@ -740,42 +768,80 @@ def create_app() -> Flask:
             allow_dev=allow_dev,
         )
 
+    @app.route("/reset-password", methods=["GET", "POST"])
     @app.route("/reset-password/<token>", methods=["GET", "POST"])
-    def reset_password(token: str):
+    def reset_password(token: str = None):
+        """Сброс по 6-значному коду из письма. Старый URL со ссылкой ведёт сюда же."""
         _ensure_password_reset_table()
-        token_hash = hashlib.sha256((token or "").encode("utf-8")).hexdigest()
-        row = execute_one(
-            g.db,
-            """
-            SELECT t.id, t.user_id, t.expires_at, t.used_at, u.username
-            FROM password_reset_tokens t
-            JOIN users u ON u.id = t.user_id
-            WHERE t.token_hash=%s
-            """,
-            (token_hash,),
-        )
-        valid = False
-        if row and not row.get("used_at"):
-            exp = row["expires_at"]
-            now = datetime.utcnow()
-            if getattr(exp, "tzinfo", None) is not None:
-                from datetime import timezone
-                now = datetime.now(timezone.utc)
-            try:
-                valid = exp >= now
-            except TypeError:
-                valid = False
-        if not valid:
-            flash("Ссылка сброса недействительна или устарела", "error")
+        if token:
+            flash(
+                "Ссылки для сброса больше не используются. "
+                "Запросите новый код на странице «Забыли пароль?».",
+                "error",
+            )
             return redirect(url_for("forgot_password"))
 
+        hint = (session.get("password_reset_hint") or "").strip()
         if request.method == "POST":
+            login_or_email = (request.form.get("username") or "").strip() or hint
+            code = re.sub(r"\D", "", (request.form.get("code") or "").strip())
             password = request.form.get("password") or ""
             password2 = request.form.get("password2") or ""
-            err = _validate_password(password, password2, row["username"] or "")
+
+            attempts = int(session.get("password_reset_attempts") or 0)
+            if attempts >= 8:
+                flash("Слишком много попыток. Запросите новый код.", "error")
+                return redirect(url_for("forgot_password"))
+
+            if not login_or_email or len(code) != 6:
+                flash("Укажите логин/email и 6-значный код из письма", "error")
+                return render_template(
+                    "reset_password.html",
+                    username_hint=login_or_email or hint,
+                )
+
+            user = execute_one(
+                g.db,
+                """
+                SELECT id, username
+                FROM users
+                WHERE username = %s OR lower(email) = lower(%s)
+                LIMIT 1
+                """,
+                (login_or_email, login_or_email),
+            )
+            code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+            row = None
+            if user:
+                row = execute_one(
+                    g.db,
+                    """
+                    SELECT t.id, t.user_id, t.expires_at, t.used_at, u.username
+                    FROM password_reset_tokens t
+                    JOIN users u ON u.id = t.user_id
+                    WHERE t.user_id=%s AND t.token_hash=%s
+                    ORDER BY t.id DESC
+                    LIMIT 1
+                    """,
+                    (user["id"], code_hash),
+                )
+
+            if not _password_reset_valid(row):
+                session["password_reset_attempts"] = attempts + 1
+                flash("Неверный или просроченный код. Запросите новый при необходимости.", "error")
+                return render_template(
+                    "reset_password.html",
+                    username_hint=login_or_email,
+                )
+
+            err = _validate_password(password, password2, (row or {}).get("username") or "")
             if err:
                 flash(err, "error")
-                return render_template("reset_password.html", token=token, username=row["username"])
+                return render_template(
+                    "reset_password.html",
+                    username_hint=login_or_email,
+                )
+
             cursor = get_cursor(g.db)
             try:
                 cursor.execute(
@@ -793,13 +859,19 @@ def create_app() -> Flask:
                 except Exception:
                     pass
                 flash("Не удалось обновить пароль", "error")
-                return render_template("reset_password.html", token=token, username=row["username"])
+                return render_template(
+                    "reset_password.html",
+                    username_hint=login_or_email,
+                )
             finally:
                 cursor.close()
+
+            session.pop("password_reset_hint", None)
+            session.pop("password_reset_attempts", None)
             flash("Пароль обновлён. Войдите с новым паролем.", "success")
             return redirect(url_for("login"))
 
-        return render_template("reset_password.html", token=token, username=row["username"])
+        return render_template("reset_password.html", username_hint=hint)
 
     @app.route("/dashboard")
     def dashboard():
@@ -2572,23 +2644,51 @@ def __zedcode_parse_input(raw_input):
     if text == "":
         return text
 
+    # Prefer JSON so bracket strings like "[{()}]" stay strings.
     try:
-        return ast.literal_eval(text)
+        return json.loads(text)
     except Exception:
-        try:
-            return json.loads(text)
-        except Exception:
+        pass
+    try:
+        val = ast.literal_eval(text)
+        if isinstance(val, set):
             return text
+        if isinstance(val, list) and any(isinstance(x, (set, bytes)) for x in val):
+            return text
+        return val
+    except Exception:
+        return text
 
 
 def __zedcode_call_method(solution, method_name, raw_input):
+    import inspect
+
     parsed = __zedcode_parse_input(raw_input)
     target = getattr(solution, method_name)
 
     if isinstance(parsed, dict):
         return target(**parsed)
+
+    n_params = None
+    try:
+        sig = inspect.signature(target)
+        n_params = sum(
+            1
+            for p in sig.parameters.values()
+            if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+        )
+    except (TypeError, ValueError):
+        n_params = None
+
     if isinstance(parsed, (list, tuple)):
+        # Multi-arg methods unpack when arity matches (legacy list-of-args format).
+        if n_params is not None and n_params > 1 and n_params == len(parsed):
+            return target(*parsed)
+        # Single-arg: unwrap OJ-style [string] only (keep [1] as array).
+        if n_params == 1 and len(parsed) == 1 and isinstance(parsed[0], str):
+            return target(parsed[0])
         return target(parsed)
+
     return target(parsed)
 
 

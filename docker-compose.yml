@@ -87,6 +87,7 @@ services:
       - MAIL_USERNAME=${MAIL_USERNAME:-}
       - MAIL_PASSWORD=${MAIL_PASSWORD:-}
       - MAIL_FROM=${MAIL_FROM:-}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME:-zedcode}
       - MAIL_USE_SSL=${MAIL_USE_SSL:-true}
       - MAIL_USE_TLS=${MAIL_USE_TLS:-false}
       - ALLOW_DEV_RESET_LINK=${ALLOW_DEV_RESET_LINK:-false}
